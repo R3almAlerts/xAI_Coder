@@ -74,7 +74,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     await loadConversations(projectId)
     // Reset to no current conv when switching project
     setCurrentConv(null)
-    setCurrentConvId(null)
+    // Note: Parent (App) handles setCurrentConvId(null) via prop
   }
 
   const switchConversation = async (convId: string) => {
