@@ -1,120 +1,112 @@
-import { useState, useEffect } from 'react';
-import { Message } from '../types';
-import { localDb, LocalDatabase } from '../lib/localDb';
-import { getUserId } from '../lib/supabase';
+import { useState, useEffect } from 'react'
+import { supabase, getUserId } from '../lib/supabase'
+import { Message, FileAttachment } from '../types'
 
 export function useMessages() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [currentConvId, setCurrentConvId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadMessages();
-  }, []);
+    async function initialize() {
+      setIsLoading(true)
+      const userId = await getUserId()
+      if (!userId) {
+        setIsLoading(false)
+        return
+      }
 
-  const loadMessages = async () => {
-    if (!LocalDatabase.isSupported()) {
-      console.log('IndexedDB not supported, starting with empty messages');
-      setIsLoading(false);
-      return;
+      // Fetch or create default conversation
+      let { data: conversations, error: convError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1)
+        .order('created_at', { ascending: false })
+
+      if (convError) {
+        console.error('Error fetching conversations:', convError)
+        setIsLoading(false)
+        return
+      }
+
+      let convId: string
+      if (!conversations || conversations.length === 0) {
+        const { data: newConv, error: insertError } = await supabase
+          .from('conversations')
+          .insert({ user_id: userId, title: 'New Conversation' })
+          .select('id')
+          .single()
+
+        if (insertError) {
+          console.error('Error creating conversation:', insertError)
+          setIsLoading(false)
+          return
+        }
+        convId = newConv!.id
+      } else {
+        convId = conversations[0].id
+      }
+
+      setCurrentConvId(convId)
+      await loadMessages(convId)
     }
 
-    try {
-      const userId = getUserId();
-      const localMessages = await localDb.loadMessages(userId);
-      
-      const convertedMessages: Message[] = localMessages.map(msg => ({
+    initialize()
+  }, [])
+
+  const loadMessages = async (convId: string) => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', convId)
+      .order('timestamp', { ascending: true })
+
+    if (error) {
+      console.error('Error loading messages:', error)
+      setMessages([])
+    } else {
+      // Parse attachments from JSONB
+      const parsedMessages: Message[] = (data || []).map((msg: any) => ({
+        id: msg.id,
         role: msg.role,
         content: msg.content,
-        timestamp: msg.timestamp,
-        attachments: msg.attachments ? JSON.parse(msg.attachments) : undefined,
-      }));
-
-      setMessages(convertedMessages);
-      console.log(`Loaded ${convertedMessages.length} messages from local database`);
-    } catch (error) {
-      console.error('Failed to load messages from local database:', error);
-    } finally {
-      setIsLoading(false);
+        timestamp: new Date(msg.timestamp).getTime(),
+        attachments: JSON.parse(msg.attachments || '[]') as FileAttachment[],
+      }))
+      setMessages(parsedMessages)
     }
-  };
+    setIsLoading(false)
+  }
 
-  const addMessage = async (message: Message) => {
-    // Add to state immediately for UI responsiveness
-    setMessages(prev => [...prev, message]);
-
-    // Save to local database
-    if (LocalDatabase.isSupported()) {
-      try {
-        const userId = getUserId();
-        await localDb.saveMessage(userId, {
-          role: message.role,
-          content: message.content,
-          timestamp: message.timestamp,
-          attachments: message.attachments,
-        });
-      } catch (error) {
-        console.error('Failed to save message to local database:', error);
-      }
-    }
-  };
-
-  const addMessages = async (newMessages: Message[]) => {
-    // Add to state immediately
-    setMessages(prev => [...prev, ...newMessages]);
-
-    // Save each message to local database
-    if (LocalDatabase.isSupported()) {
-      try {
-        const userId = getUserId();
-        for (const message of newMessages) {
-          await localDb.saveMessage(userId, {
-            role: message.role,
-            content: message.content,
-            timestamp: message.timestamp,
-            attachments: message.attachments,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to save messages to local database:', error);
-      }
-    }
-  };
-
-  const clearMessages = async () => {
-    setMessages([]);
-
-    if (LocalDatabase.isSupported()) {
-      try {
-        const userId = getUserId();
-        await localDb.deleteMessages(userId);
-        console.log('Messages cleared from local database');
-      } catch (error) {
-        console.error('Failed to clear messages from local database:', error);
-      }
-    }
-  };
-
-  const getMessageCount = async (): Promise<number> => {
-    if (!LocalDatabase.isSupported()) {
-      return messages.length;
+  const addMessage = async (message: Omit<Message, 'id'>) => {
+    if (!currentConvId) {
+      throw new Error('No active conversation. Please initialize first.')
     }
 
-    try {
-      const userId = getUserId();
-      return await localDb.getMessageCount(userId);
-    } catch (error) {
-      console.error('Failed to get message count from local database:', error);
-      return messages.length;
+    const dbMessage = {
+      conversation_id: currentConvId,
+      role: message.role,
+      content: message.content,
+      timestamp: new Date(message.timestamp),
+      attachments: JSON.stringify(message.attachments || []),
     }
-  };
 
-  return {
-    messages,
-    setMessages,
-    addMessage,
-    addMessages,
-    clearMessages,
-    getMessageCount,
-    isLoading,
-  };
+    const { data, error } = await supabase
+      .from('messages')
+      .insert(dbMessage)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error adding message:', error)
+      throw error
+    }
+
+    // Add to local state with DB-generated ID
+    const fullMessage: Message = { ...message, id: data.id }
+    setMessages((prev) => [...prev, fullMessage])
+  }
+
+  return { messages, addMessage, isLoading }
 }

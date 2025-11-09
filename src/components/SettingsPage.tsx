@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { Settings } from '../types';
-import { localDb, LocalDatabase } from '../lib/localDb';
-import { getUserId } from '../lib/supabase';
+import { getUserId, supabase } from '../lib/supabase';
 import { useSettings } from '../hooks/useSettings';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,46 +9,62 @@ function ClearDataButton({ onDataCleared }: { onDataCleared?: () => void }) {
   const navigate = useNavigate();
 
   const handleClearData = async () => {
-    if (!confirm('Are you sure you want to clear all local data? This will remove all settings stored locally in your browser.')) {
+    if (!confirm('Are you sure you want to clear all local and cloud data? This will remove all conversations, messages, and settings.')) {
       return;
     }
 
     try {
-      // Clear IndexedDB
-      if (LocalDatabase.isSupported()) {
-        await localDb.clearAllData();
-        console.log('IndexedDB cleared');
+      const userId = await getUserId();
+      if (!userId) {
+        alert('No user session found.');
+        return;
       }
 
-      // Clear localStorage
+      // Delete conversations (cascades to messages)
+      const { error: convError } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('user_id', userId);
+
+      if (convError) throw convError;
+
+      // Delete user settings
+      const { error: settingsError } = await supabase
+        .from('user_settings')
+        .delete()
+        .eq('user_id', userId);
+
+      if (settingsError) throw settingsError;
+
+      // Clear any localStorage fallbacks
       localStorage.removeItem('grok-chat-settings');
       localStorage.removeItem('grok-user-id');
-      console.log('localStorage cleared');
 
-      // Notify parent component
-      if (onDataCleared) {
-        onDataCleared();
-      }
+      // Sign out to reset session
+      await supabase.auth.signOut();
 
-      alert('Local data cleared successfully. The page will reload.');
+      if (onDataCleared) onDataCleared();
+
+      alert('Data cleared successfully. Reloading...');
       window.location.reload();
     } catch (error) {
-      console.error('Error clearing local data:', error);
-      alert('Failed to clear some local data. Check console for details.');
+      console.error('Error clearing data:', error);
+      alert('Failed to clear data. Check console for details.');
     }
   };
 
   const getStorageInfo = async () => {
-    if (!LocalDatabase.isSupported()) {
-      return 'localStorage only';
+    if (!LocalDatabase.isSupported()) { // Fallback if needed, but remove post-full migration
+      return 'Supabase cloud storage';
     }
 
     try {
-      const userId = getUserId();
-      const messageCount = await localDb.getMessageCount(userId);
-      return `${messageCount} messages stored`;
+      const userId = await getUserId();
+      if (!userId) return 'No user session';
+      const count = await getMessageCount(userId);
+      return `${count} messages stored in Supabase`;
     } catch (error) {
-      return 'IndexedDB + localStorage';
+      return 'Supabase cloud storage';
     }
   };
 
@@ -69,7 +84,7 @@ function ClearDataButton({ onDataCleared }: { onDataCleared?: () => void }) {
         onClick={handleClearData}
         className="text-sm text-red-600 hover:text-red-700 underline"
       >
-        Clear All Local Data
+        Clear All Data
       </button>
     </div>
   );
@@ -140,10 +155,10 @@ export function SettingsPage() {
 
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-gray-700">Local Storage</p>
+              <p className="text-sm font-medium text-gray-700">Cloud Storage</p>
             </div>
             <p className="text-xs text-gray-600 mb-2">
-              Settings and messages are stored locally in your browser and synced to the cloud when available.
+              Settings and messages are stored in Supabase and synced across devices.
             </p>
             <ClearDataButton />
           </div>

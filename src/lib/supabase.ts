@@ -1,25 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!
 
-// Create client only if environment variables are available
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export async function getUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id ?? null
+}
 
-export function getUserId(): string {
-  let userId = localStorage.getItem('grok-user-id');
-
-  if (!userId) {
-    userId = crypto.randomUUID();
-    localStorage.setItem('grok-user-id', userId);
-    console.log('Generated new user ID:', userId);
-  } else {
-    console.log('Using existing user ID:', userId);
+export async function getMessageCount(userId: string): Promise<number> {
+  // Note: Requires RPC function 'get_message_count' in Supabase (see migration update below)
+  const { data, error } = await supabase.rpc('get_message_count', { p_user_id: userId })
+  if (error) {
+    console.error('Error fetching message count:', error)
+    return 0
   }
-
-  return userId;
+  return data || 0
 }

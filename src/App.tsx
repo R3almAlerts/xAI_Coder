@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Settings as SettingsIcon, Loader2, AlertCircle } from 'lucide-react';
 import { Message, FileAttachment } from './types';
 import { useSettings } from './hooks/useSettings';
 import { useMessages } from './hooks/useMessages';
@@ -8,6 +8,7 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SettingsPage } from './components/SettingsPage';
 import { useLocation, useNavigate, Routes, Route, Link } from 'react-router-dom';
+import { supabase } from './lib/supabase';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,6 +21,31 @@ function App() {
   const navigate = useNavigate();
 
   const isSettingsPage = location.pathname === '/settings';
+
+  // Initialize anonymous auth on mount
+  useEffect(() => {
+    async function initAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) console.error('Auth initialization error:', error);
+      }
+    }
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        // Optionally redirect or clear state
+        window.location.reload();
+      }
+      // Re-trigger hooks on auth change if needed
+      if (isLoadingSettings || isLoadingMessages) return;
+      // Settings/Messages hooks will re-run via getUserId()
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,14 +62,21 @@ function App() {
       return;
     }
 
-    const userMessage: Message = {
+    const userMessage: Omit<Message, 'id'> = {
       role: 'user',
       content,
       timestamp: Date.now(),
       attachments,
     };
 
-    await addMessage(userMessage);
+    try {
+      await addMessage(userMessage);
+    } catch (err) {
+      console.error('Failed to add user message:', err);
+      setError('Failed to send message');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -53,15 +86,13 @@ function App() {
       // Auto-select best model if "auto" is chosen
       const modelToUse = settings.model === 'auto' ? 'grok-2-latest' : settings.model;
 
-      // Prepare messages for API
-      const apiMessages = [
-        ...messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      ];
+      // Prepare messages for API (exclude attachments, use content only)
+      const apiMessages = messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
 
-      // Add current message with attachments if any
+      // Add current message with attachments description if any
       let currentMessageContent = content;
       if (attachments && attachments.length > 0) {
         currentMessageContent += `\n\nAttached files (${attachments.length}):\n`;
@@ -120,7 +151,7 @@ function App() {
       const data = await response.json();
       console.log('API Response:', data);
 
-      const assistantMessage: Message = {
+      const assistantMessage: Omit<Message, 'id'> = {
         role: 'assistant',
         content: data.choices?.[0]?.message?.content || 'No response from AI',
         timestamp: Date.now(),
@@ -225,7 +256,7 @@ function App() {
                 ) : (
                   <div className="space-y-6">
                     {messages.map((message, index) => (
-                      <ChatMessage key={index} message={message} />
+                      <ChatMessage key={message.id || index} message={message} />
                     ))}
                     {isLoading && (
                       <div className="flex gap-3 justify-start">
