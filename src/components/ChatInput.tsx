@@ -2,7 +2,7 @@ import { Send, Cpu, Paperclip, X, Folder } from 'lucide-react';
 import { useState, KeyboardEvent } from 'react';
 import { FileAttachment } from '../types';
 import { FolderUploadModal } from './FolderUploadModal';
-import { uploadFile } from '../lib/supabase';
+import { getUserId, uploadFile } from '../lib/supabase';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: FileAttachment[]) => void;
@@ -59,7 +59,7 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
 
       try {
         // Upload to Supabase storage
-        const userId = await getUserId(); // Assume imported or available
+        const userId = await getUserId();
         if (!userId) {
           alert('User not authenticated. Please refresh.');
           continue;
