@@ -5,6 +5,7 @@ import { useSettings } from './hooks/useSettings';
 import { useMessages } from './hooks/useMessages';
 import { ModelSelectorModal } from './components/ModelSelectorModal';
 import { ConversationsList } from './components/ConversationsList';
+import { ProjectsList } from './components/ProjectsList';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SettingsPage } from './components/SettingsPage';
@@ -15,10 +16,11 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings();
-  const { messages, conversations, currentConv, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation, deleteConversation, updateConversationTitle } = useMessages(currentConvId);
+  const { messages, conversations, currentConv, projects, currentProject, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation, switchProject, createProject, deleteConversation, updateConversationTitle } = useMessages(currentConvId, currentProjectId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -66,7 +68,17 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  const handleCreateNew = () => {
+  const handleCreateNewProject = () => {
+    createProject();
+  };
+
+  const handleSelectProject = (projectId: string) => {
+    setCurrentProjectId(projectId);
+    setCurrentConvId(null); // Reset conv when switching projects
+    setIsSidebarOpen(false); // Close on mobile
+  };
+
+  const handleCreateNewConv = () => {
     createConversation();
   };
 
@@ -261,14 +273,24 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className={`fixed md:static inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200`}>
-          <ConversationsList
-            currentConvId={currentConvId}
-            conversations={conversations}
-            onSelectConv={handleSelectConv}
-            onCreateNew={handleCreateNew}
-            onDeleteConv={handleDeleteConv}
-            onUpdateTitle={handleUpdateTitle}
-          />
+          <div className="flex h-full">
+            {/* Projects Sidebar */}
+            <ProjectsList
+              currentProjectId={currentProjectId}
+              projects={projects}
+              onSelectProject={handleSelectProject}
+              onCreateNew={handleCreateNewProject}
+            />
+            {/* Conversations Sidebar */}
+            <ConversationsList
+              currentConvId={currentConvId}
+              conversations={conversations}
+              onSelectConv={handleSelectConv}
+              onCreateNew={handleCreateNewConv}
+              onDeleteConv={handleDeleteConv}
+              onUpdateTitle={handleUpdateTitle}
+            />
+          </div>
         </div>
 
         {/* Overlay for mobile */}
@@ -344,6 +366,7 @@ function App() {
               disabled={isLoading || !hasApiKey}
               currentModel={settings.model}
               onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+              currentProjectId={currentProjectId}
             />
           )}
         </div>

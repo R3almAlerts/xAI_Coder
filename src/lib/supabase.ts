@@ -21,10 +21,12 @@ export async function getMessageCount(userId: string): Promise<number> {
 }
 
 // Upload file to Supabase storage and return public URL
-export async function uploadFile(file: File, userId: string): Promise<string | null> {
+export async function uploadFile(file: File, userId: string, projectId?: string): Promise<string | null> {
   if (!file) return null;
 
-  const fileName = `${userId}/${Date.now()}-${file.name}`;
+  // Path: userId/[projectId]/timestamp-filename (projectId optional for default)
+  const pathSegments = projectId ? [userId, projectId] : [userId];
+  const fileName = `${pathSegments.join('/')}/${Date.now()}-${file.name}`;
   const { data, error } = await supabase.storage
     .from('attachments') // Bucket name; create in Supabase dashboard if not exists
     .upload(fileName, file, {

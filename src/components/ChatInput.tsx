@@ -9,9 +9,10 @@ interface ChatInputProps {
   disabled: boolean;
   currentModel: string;
   onOpenModelSelector: () => void;
+  currentProjectId?: string; // New: for project-scoped uploads
 }
 
-export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector, currentProjectId }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -65,7 +66,7 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
           continue;
         }
 
-        const url = await uploadFile(file, userId);
+        const url = await uploadFile(file, userId, currentProjectId);
         if (!url) {
           alert(`Failed to upload "${file.name}".`);
           continue;
