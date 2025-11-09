@@ -2,6 +2,16 @@ import { useState, useEffect } from 'react'
 import { supabase, getUserId } from '../lib/supabase'
 import { Settings } from '../types'
 
+// Helper to transform camelCase to snake_case for DB compatibility
+const camelToSnake = (obj: any): any => {
+  const snakeObj: any = {}
+  for (const [key, value] of Object.entries(obj)) {
+    const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase()
+    snakeObj[snakeKey] = value
+  }
+  return snakeObj
+}
+
 export function useSettings() {
   const [settings, setSettingsLocal] = useState<Settings>({
     apiKey: '',
@@ -29,10 +39,11 @@ export function useSettings() {
         console.error('Error loading settings:', error)
       }
 
-      const loadedSettings: Settings = data || {
-        apiKey: '',
-        baseUrl: 'https://api.x.ai',
-        model: 'auto',
+      const loadedData = data as any // DB returns snake_case
+      const loadedSettings: Settings = {
+        apiKey: loadedData?.api_key || '',
+        baseUrl: loadedData?.base_url || 'https://api.x.ai',
+        model: loadedData?.model || 'auto',
       }
       setSettingsLocal(loadedSettings)
       setIsLoading(false)
@@ -47,9 +58,15 @@ export function useSettings() {
       throw new Error('User not authenticated. Please sign in.')
     }
 
+    // Transform camelCase to snake_case for DB
+    const dbPayload = camelToSnake({
+      user_id: userId,
+      ...newSettings,
+    })
+
     const { error } = await supabase
       .from('user_settings')
-      .upsert({ user_id: userId, ...newSettings })
+      .upsert(dbPayload)
       .eq('user_id', userId)
 
     if (error) {
