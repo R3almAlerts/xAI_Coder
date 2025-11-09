@@ -159,8 +159,8 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
         <div className="max-w-4xl mx-auto">
           {/* Attachments Preview */}
           {attachments.length > 0 && (
-            <div className="mb-3 space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-gray-500 font-medium">
                   {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
                 </p>
@@ -172,30 +172,32 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
                   Clear all
                 </button>
               </div>
-              {attachments.map((attachment) => (
-                <div
-                  key={attachment.id}
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
-                >
-                  <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {attachment.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(attachment.size)} • {attachment.type || 'Unknown type'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(attachment.id)}
-                    className="p-1 hover:bg-gray-200 rounded transition-colors"
-                    aria-label="Remove attachment"
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {attachments.map((attachment) => (
+                  <div
+                    key={attachment.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
                   >
-                    <X size={16} className="text-gray-500" />
-                  </button>
-                </div>
-              ))}
+                    <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {attachment.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatFileSize(attachment.size)} • {attachment.type || 'Unknown type'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      aria-label="Remove attachment"
+                    >
+                      <X size={16} className="text-gray-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -1,4 +1,5 @@
-import { Bot, User, Paperclip, Download } from 'lucide-react';
+import { useState } from 'react';
+import { Bot, User, Paperclip, Download, FileText, AlertCircle } from 'lucide-react';
 import { Message, FileAttachment } from '../types';
 
 interface ChatMessageProps {
