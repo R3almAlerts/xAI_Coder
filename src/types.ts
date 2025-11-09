@@ -26,4 +26,12 @@ export interface Conversation {
   title: string;
   created_at: string; // ISO string for display
   updated_at: string; // ISO string for sorting
+  project_id?: string; // Optional FK to project
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
