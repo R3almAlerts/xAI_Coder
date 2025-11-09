@@ -18,7 +18,7 @@ function App() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings();
-  const { messages, conversations, currentConv, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation } = useMessages(currentConvId);
+  const { messages, conversations, currentConv, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation, deleteConversation, updateConversationTitle } = useMessages(currentConvId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -73,6 +73,14 @@ function App() {
   const handleSelectConv = (convId: string) => {
     setCurrentConvId(convId);
     setIsSidebarOpen(false); // Close on mobile
+  };
+
+  const handleDeleteConv = (convId: string) => {
+    deleteConversation(convId);
+  };
+
+  const handleUpdateTitle = (convId: string, title: string) => {
+    updateConversationTitle(convId, title);
   };
 
   const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
@@ -242,8 +250,11 @@ function App() {
         <div className={`fixed md:static inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200`}>
           <ConversationsList
             currentConvId={currentConvId}
+            conversations={conversations}
             onSelectConv={handleSelectConv}
             onCreateNew={handleCreateNew}
+            onDeleteConv={handleDeleteConv}
+            onUpdateTitle={handleUpdateTitle}
           />
         </div>
 

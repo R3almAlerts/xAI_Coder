@@ -4,11 +4,21 @@ import { Conversation } from '../types';
 
 interface ConversationsListProps {
   currentConvId: string | null;
+  conversations: Conversation[];
   onSelectConv: (convId: string) => void;
   onCreateNew: () => void;
+  onDeleteConv: (convId: string) => void;
+  onUpdateTitle: (convId: string, title: string) => void;
 }
 
-export function ConversationsList({ currentConvId, onSelectConv, onCreateNew }: ConversationsListProps) {
+export function ConversationsList({ 
+  currentConvId, 
+  conversations, 
+  onSelectConv, 
+  onCreateNew, 
+  onDeleteConv, 
+  onUpdateTitle 
+}: ConversationsListProps) {
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
 
@@ -19,16 +29,14 @@ export function ConversationsList({ currentConvId, onSelectConv, onCreateNew }: 
 
   const handleEditSave = (convId: string) => {
     if (editTitle.trim()) {
-      // Note: updateConversationTitle would be called here from parent/useMessages
-      console.log('Save title:', editTitle); // Placeholder for now; integrate with parent
+      onUpdateTitle(convId, editTitle.trim());
     }
     setEditingConvId(null);
   };
 
   const handleDelete = (convId: string) => {
     if (confirm('Delete this conversation? All messages will be lost.')) {
-      // Note: deleteConversation would be called here from parent/useMessages
-      console.log('Delete conv:', convId); // Placeholder for now
+      onDeleteConv(convId);
     }
   };
 
