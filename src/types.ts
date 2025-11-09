@@ -19,3 +19,10 @@ export interface Settings {
   baseUrl: string;
   model: string;
 }
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string; // ISO string for display
+  updated_at: string; // ISO string for sorting
+}

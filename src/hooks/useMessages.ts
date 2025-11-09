@@ -1,59 +1,72 @@
 import { useState, useEffect } from 'react'
 import { supabase, getUserId } from '../lib/supabase'
-import { Message, FileAttachment } from '../types'
+import { Message, FileAttachment, Conversation } from '../types'
 
-export function useMessages() {
+export function useMessages(currentConvId?: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [currentConvId, setCurrentConvId] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [currentConv, setCurrentConv] = useState<Conversation | null>(null)
+
+  const userId = await getUserId() // Assume this is called once; cache if needed
 
   useEffect(() => {
     async function initialize() {
       setIsLoading(true)
-      const userId = await getUserId()
       if (!userId) {
         setIsLoading(false)
         return
       }
 
-      // Fetch or create default conversation
-      let { data: conversations, error: convError } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('user_id', userId)
-        .limit(1)
-        .order('created_at', { ascending: false })
-
-      if (convError) {
-        console.error('Error fetching conversations:', convError)
-        setIsLoading(false)
-        return
-      }
-
-      let convId: string
-      if (!conversations || conversations.length === 0) {
-        const { data: newConv, error: insertError } = await supabase
-          .from('conversations')
-          .insert({ user_id: userId, title: 'New Conversation' })
-          .select('id')
-          .single()
-
-        if (insertError) {
-          console.error('Error creating conversation:', insertError)
-          setIsLoading(false)
-          return
-        }
-        convId = newConv!.id
+      await loadConversations()
+      if (currentConvId) {
+        await switchConversation(currentConvId)
       } else {
-        convId = conversations[0].id
+        // Default to latest or create new
+        const latestConv = conversations[0]
+        if (latestConv) {
+          await switchConversation(latestConv.id)
+        } else {
+          await createConversation('New Conversation')
+        }
       }
-
-      setCurrentConvId(convId)
-      await loadMessages(convId)
+      setIsLoading(false)
     }
 
     initialize()
   }, [])
+
+  const loadConversations = async () => {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('id, title, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+
+    if (error) {
+      console.error('Error loading conversations:', error)
+      setConversations([])
+    } else {
+      setConversations(data || [])
+    }
+  }
+
+  const switchConversation = async (convId: string) => {
+    setIsLoading(true)
+    const { data: convData, error: convError } = await supabase
+      .from('conversations')
+      .select('id, title, created_at, updated_at')
+      .eq('id', convId)
+      .single()
+
+    if (convError) {
+      console.error('Error switching conversation:', convError)
+      return
+    }
+
+    setCurrentConv(convData)
+    await loadMessages(convId)
+  }
 
   const loadMessages = async (convId: string) => {
     const { data, error } = await supabase
@@ -79,13 +92,69 @@ export function useMessages() {
     setIsLoading(false)
   }
 
+  const createConversation = async (title: string = 'New Conversation') => {
+    const { data: newConv, error } = await supabase
+      .from('conversations')
+      .insert({ user_id: userId, title })
+      .select('id, title, created_at, updated_at')
+      .single()
+
+    if (error) {
+      console.error('Error creating conversation:', error)
+      return
+    }
+
+    setConversations([newConv, ...conversations])
+    await switchConversation(newConv.id)
+  }
+
+  const deleteConversation = async (convId: string) => {
+    const { error } = await supabase
+      .from('conversations')
+      .delete()
+      .eq('id', convId)
+
+    if (error) {
+      console.error('Error deleting conversation:', error)
+      return
+    }
+
+    setConversations(conversations.filter(c => c.id !== convId))
+    if (currentConv?.id === convId) {
+      // Switch to another or create new
+      const nextConv = conversations[0]
+      if (nextConv) {
+        await switchConversation(nextConv.id)
+      } else {
+        await createConversation('New Conversation')
+      }
+    }
+  }
+
+  const updateConversationTitle = async (convId: string, newTitle: string) => {
+    const { error } = await supabase
+      .from('conversations')
+      .update({ title: newTitle })
+      .eq('id', convId)
+
+    if (error) {
+      console.error('Error updating conversation title:', error)
+      return
+    }
+
+    setConversations(conversations.map(c => c.id === convId ? { ...c, title: newTitle } : c))
+    if (currentConv?.id === convId) {
+      setCurrentConv({ ...currentConv, title: newTitle })
+    }
+  }
+
   const addMessage = async (message: Omit<Message, 'id'>) => {
-    if (!currentConvId) {
-      throw new Error('No active conversation. Please initialize first.')
+    if (!currentConv) {
+      throw new Error('No active conversation. Please select or create one.')
     }
 
     const dbMessage = {
-      conversation_id: currentConvId,
+      conversation_id: currentConv.id,
       role: message.role,
       content: message.content,
       timestamp: new Date(message.timestamp),
@@ -106,7 +175,26 @@ export function useMessages() {
     // Add to local state with DB-generated ID
     const fullMessage: Message = { ...message, id: data.id }
     setMessages((prev) => [...prev, fullMessage])
+
+    // Update conversation timestamp
+    await supabase
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', currentConv.id)
+
+    // Refresh conversations list for updated_at
+    await loadConversations()
   }
 
-  return { messages, addMessage, isLoading }
+  return { 
+    messages, 
+    conversations, 
+    currentConv, 
+    addMessage, 
+    isLoading,
+    switchConversation,
+    createConversation,
+    deleteConversation,
+    updateConversationTitle 
+  }
 }

@@ -1,9 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Loader2, AlertCircle, Menu, X } from 'lucide-react';
 import { Message, FileAttachment } from './types';
 import { useSettings } from './hooks/useSettings';
 import { useMessages } from './hooks/useMessages';
 import { ModelSelectorModal } from './components/ModelSelectorModal';
+import { ConversationsList } from './components/ConversationsList';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SettingsPage } from './components/SettingsPage';
@@ -14,8 +15,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const [currentConvId, setCurrentConvId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings();
-  const { messages, addMessage, isLoading: isLoadingMessages } = useMessages();
+  const { messages, conversations, currentConv, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation } = useMessages(currentConvId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,10 +66,24 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
+  const handleCreateNew = () => {
+    createConversation();
+  };
+
+  const handleSelectConv = (convId: string) => {
+    setCurrentConvId(convId);
+    setIsSidebarOpen(false); // Close on mobile
+  };
+
   const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
     if (!settings.apiKey) {
       setError('Please configure your API key in settings');
       navigate('/settings');
+      return;
+    }
+
+    if (!currentConv) {
+      setError('No active conversation. Please select one.');
       return;
     }
 
@@ -187,11 +204,18 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-      <header className="bg-white border-b shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+      {!isSettingsPage && (
+        <header className="bg-white border-b shadow-sm flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-              <span className="text-white font-bold text-xl">G</span>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Toggle menu"
+            >
+              {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+              <span className="text-white font-bold text-lg">G</span>
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Grok Chat</h1>
@@ -199,17 +223,107 @@ function App() {
             </div>
           </div>
 
-          {!isSettingsPage ? (
-            <Link
-              to="/settings"
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Open settings"
-            >
-              <SettingsIcon size={24} className="text-gray-600" />
-            </Link>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {!isSettingsPage && (
+              <Link
+                to="/settings"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Open settings"
+              >
+                <SettingsIcon size={24} className="text-gray-600" />
+              </Link>
+            )}
+          </div>
+        </header>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div className={`fixed md:static inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200`}>
+          <ConversationsList
+            currentConvId={currentConvId}
+            onSelectConv={handleSelectConv}
+            onCreateNew={handleCreateNew}
+          />
         </div>
-      </header>
+
+        {/* Overlay for mobile */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+
+        {/* Main content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {!isSettingsPage && (
+            <div className="border-b border-gray-200 bg-white">
+              <div className="max-w-4xl mx-auto px-4 py-2">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {currentConv?.title || 'New Conversation'}
+                </h2>
+              </div>
+            </div>
+          )}
+
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <div className="flex-1 overflow-y-auto">
+                  <div className="max-w-4xl mx-auto px-4 py-6">
+                    {messages.length === 0 ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center space-y-4">
+                          <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+                            <span className="text-white font-bold text-3xl">G</span>
+                          </div>
+                          <h2 className="text-2xl font-bold text-gray-900">Start a conversation</h2>
+                          <p className="text-gray-600 max-w-md">
+                            Ask me anything! I'm Grok, powered by xAI's advanced language model.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {messages.map((message, index) => (
+                          <ChatMessage key={message.id || index} message={message} />
+                        ))}
+                        {isLoading && (
+                          <div className="flex gap-3 justify-start">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                              <Loader2 size={18} className="text-white animate-spin" />
+                            </div>
+                            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                              <div className="flex gap-1">
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              }
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+
+          {!isSettingsPage && (
+            <ChatInput
+              onSend={sendMessage}
+              disabled={isLoading || !hasApiKey}
+              currentModel={settings.model}
+              onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+            />
+          )}
+        </div>
+      </div>
 
       {!isSettingsPage && !hasApiKey && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
@@ -241,62 +355,6 @@ function App() {
             </button>
           </div>
         </div>
-      )}
-
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <div className="flex-1 overflow-y-auto">
-              <div className="max-w-4xl mx-auto px-4 py-6">
-                {messages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center space-y-4">
-                      <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-                        <span className="text-white font-bold text-3xl">G</span>
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-900">Start a conversation</h2>
-                      <p className="text-gray-600 max-w-md">
-                        Ask me anything! I'm Grok, powered by xAI's advanced language model.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {messages.map((message, index) => (
-                      <ChatMessage key={message.id || index} message={message} />
-                    ))}
-                    {isLoading && (
-                      <div className="flex gap-3 justify-start">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                          <Loader2 size={18} className="text-white animate-spin" />
-                        </div>
-                        <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
-                          <div className="flex gap-1">
-                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                )}
-              </div>
-            </div>
-          }
-        />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
-
-      {!isSettingsPage && (
-        <ChatInput
-          onSend={sendMessage}
-          disabled={isLoading || !hasApiKey}
-          currentModel={settings.model}
-          onOpenModelSelector={() => setIsModelSelectorOpen(true)}
-        />
       )}
 
       <ModelSelectorModal
