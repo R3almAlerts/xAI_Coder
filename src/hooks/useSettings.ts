@@ -67,7 +67,6 @@ export function useSettings() {
     const { error } = await supabase
       .from('user_settings')
       .upsert(dbPayload)
-      .eq('user_id', userId)
 
     if (error) {
       console.error('Error saving settings:', error)
