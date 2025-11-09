@@ -57,7 +57,7 @@ export function ConversationsList({
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Chats</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Conversations</h2>
           <button
             onClick={onCreateNew}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -131,7 +131,7 @@ export function ConversationsList({
                 onClick={onCreateNew}
                 className="text-blue-600 hover:text-blue-700 text-sm underline"
               >
-                Start a new chat
+                Start a new conversation
               </button>
             </div>
           </div>
