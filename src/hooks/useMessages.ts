@@ -125,6 +125,20 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     const userId = userIdRef.current
     if (!userId) return
 
+    // Check if project with this title already exists for user
+    const { data: existing } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('title', title)
+      .single()
+
+    if (existing) {
+      // If exists, switch to it instead of creating duplicate
+      await switchProject(existing.id)
+      return
+    }
+
     const { data: newProject, error } = await supabase
       .from('projects')
       .insert({ user_id: userId, title })
@@ -321,8 +335,8 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     addMessage, 
     isLoading,
     switchConversation,
-    createConversation,
     switchProject,
+    createConversation,
     createProject,
     deleteConversation,
     updateConversationTitle 
