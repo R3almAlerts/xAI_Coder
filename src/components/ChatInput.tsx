@@ -1,6 +1,7 @@
 import { Send, Cpu, Paperclip, X } from 'lucide-react';
 import { useState, KeyboardEvent } from 'react';
 import { FileAttachment } from '../types';
+import { FolderUploadModal } from './FolderUploadModal';
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: FileAttachment[]) => void;
@@ -12,6 +13,7 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
 
   const getModelDisplayName = (model: string) => {
     if (model === 'auto') return 'Auto';
@@ -31,13 +33,13 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
     e.target.value = '';
   };
 
-  const handleDirectorySelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    
-    await processFiles(files);
-    
-    // Reset input
-    e.target.value = '';
+  const handleFolderSelect = () => {
+    setIsFolderModalOpen(true);
+  };
+
+  const handleFolderConfirm = (processedFiles: FileAttachment[]) => {
+    setAttachments(prev => [...prev, ...processedFiles]);
+    setIsFolderModalOpen(false);
   };
 
   const processFiles = async (files: File[]) => {
@@ -114,47 +116,49 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t bg-white p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Attachments Preview */}
-        {attachments.length > 0 && (
-          <div className="mb-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600 font-medium">
-                {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
-              </p>
-              <button
-                type="button"
-                onClick={() => setAttachments([])}
-                className="text-sm text-red-600 hover:text-red-700 font-medium"
-              >
-                Clear all
-              </button>
-            </div>
-            {attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
-              >
-                <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {attachment.name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatFileSize(attachment.size)} • {attachment.type || 'Unknown type'}
-                  </p>
-                </div>
+    <>
+      <form onSubmit={handleSubmit} className="border-t bg-white p-4">
+        <div className="max-w-4xl mx-auto">
+          {/* Attachments Preview */}
+          {attachments.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600 font-medium">
+                  {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
+                </p>
                 <button
                   type="button"
-                  onClick={() => removeAttachment(attachment.id)}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors"
-                  aria-label="Remove attachment"
+                  onClick={() => setAttachments([])}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium"
                 >
-                  <X size={16} className="text-gray-500" />
+                  Clear all
                 </button>
               </div>
-            ))}
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
+                >
+                  <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {attachment.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {formatFileSize(attachment.size)} • {attachment.type || 'Unknown type'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(attachment.id)}
+                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                    aria-label="Remove attachment"
+                  >
+                    <X size={16} className="text-gray-500" />
+                  </button>
+                </div>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -182,19 +186,15 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
             />
           </label>
           
-          <label className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer">
-            <Paperclip size={16} />
+          <button
+            type="button"
+            onClick={handleFolderSelect}
+            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+            disabled={disabled}
+          >
+            <Folder size={16} />
             <span>Folder</span>
-            <input
-              type="file"
-              webkitdirectory=""
-              directory=""
-              multiple
-              onChange={handleDirectorySelect}
-              disabled={disabled}
-              className="hidden"
-            />
-          </label>
+          </button>
         </div>
         
         <div className="flex gap-3">
@@ -224,5 +224,11 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector 
         </div>
       </div>
     </form>
+
+    <FolderUploadModal
+      isOpen={isFolderModalOpen}
+      onClose={() => setIsFolderModalOpen(false)}
+      onConfirm={handleFolderConfirm}
+    />
   );
 }
