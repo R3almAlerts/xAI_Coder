@@ -22,13 +22,21 @@ function App() {
 
   const isSettingsPage = location.pathname === '/settings';
 
-  // Initialize anonymous auth on mount
+  // Initialize anonymous auth on mount (with graceful error handling)
   useEffect(() => {
     async function initAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) console.error('Auth initialization error:', error);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          const { error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.warn('Anonymous auth failed (likely disabled in dashboard):', error.message);
+            // Fallback: Proceed without auth (app may show loading/errors on DB ops)
+            // User must enable anonymous sign-ins in Supabase dashboard for full functionality
+          }
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
       }
     }
 

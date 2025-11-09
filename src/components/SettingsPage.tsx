@@ -54,16 +54,41 @@ function ClearDataButton({ onDataCleared }: { onDataCleared?: () => void }) {
   };
 
   const getStorageInfo = async () => {
-    if (!LocalDatabase.isSupported()) { // Fallback if needed, but remove post-full migration
-      return 'Supabase cloud storage';
-    }
-
     try {
       const userId = await getUserId();
-      if (!userId) return 'No user session';
-      const count = await getMessageCount(userId);
-      return `${count} messages stored in Supabase`;
+      if (!userId) return 'No user session - Supabase cloud storage';
+      
+      // Fetch first conversation ID safely with maybeSingle to avoid 406 on empty
+      const { data: convData, error: convError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (convError) {
+        console.warn('Conversation fetch error in storage info:', convError);
+        return 'Supabase cloud storage (no conversations yet)';
+      }
+
+      const convId = convData?.id;
+      if (!convId) {
+        return '0 messages stored in Supabase (no conversations yet)';
+      }
+
+      // Count messages for that conversation
+      const { count, error } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('conversation_id', convId);
+
+      if (error) {
+        console.warn('Message count query failed:', error);
+        return 'Supabase cloud storage (query error)';
+      }
+      
+      return `${count || 0} messages stored in Supabase`;
     } catch (error) {
+      console.error('Error fetching storage info:', error);
       return 'Supabase cloud storage';
     }
   };
