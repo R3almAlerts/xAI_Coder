@@ -223,6 +223,13 @@ export function useMessages(currentConvId?: string) {
     initialize()
   }, [])
 
+  // Add useEffect to react to currentConvId prop changes for switching
+  useEffect(() => {
+    if (!initializedRef.current || !currentConvId) return
+
+    switchConversation(currentConvId)
+  }, [currentConvId])
+
   return { 
     messages, 
     conversations, 
