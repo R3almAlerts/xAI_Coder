@@ -211,7 +211,7 @@ function App() {
     <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
       {/* HEADER */}
       {!isSettingsPage && (
-        <header className="relative bg-white border-b shadow-sm flex items-center justify-between px-4 py-3 z-50">
+        <header className="bg-white border-b shadow-sm flex items-center justify-between px-4 py-3 z-50">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -233,19 +233,18 @@ function App() {
         </header>
       )}
 
-      {/* MAIN CONTAINER */}
+      {/* MAIN LAYOUT */}
       <div className="flex flex-1 relative overflow-hidden">
-        {/* SIDEBAR – NOW 100% NON-OVERLAPPING */}
+        {/* SIDEBAR – fixed on mobile, static on desktop */}
         <aside
           className={`
-            fixed top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200
+            fixed md:static top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200
             z-50 transform transition-transform duration-300 ease-in-out
-            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-            md:translate-x-0 md:static md:z-auto
-            ${!isSettingsPage ? 'pt-16' : 'pt-0'}  /* respect header */
+            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+            ${!isSettingsPage ? 'pt-16' : 'pt-0'}
           `}
         >
-          <div className="h-full flex flex-col overflow-y-auto">
+          <div className="h-full overflow-y-auto">
             <ProjectsList
               currentProjectId={currentProjectId}
               projects={projects}
@@ -265,7 +264,7 @@ function App() {
           </div>
         </aside>
 
-        {/* DARK OVERLAY (mobile only) */}
+        {/* Mobile overlay */}
         {isSidebarOpen && (
           <div
             className="fixed inset-0 bg-black/60 z-40 md:hidden"
@@ -273,9 +272,9 @@ function App() {
           />
         )}
 
-        {/* MAIN CHAT AREA – FULLY VISIBLE */}
-        <div className="flex-1 flex flex-col md:ml-0">
-          {/* Chat Title */}
+        {/* MAIN CONTENT – NOW PERFECT */}
+        <div className="flex-1 flex flex-col relative">
+          {/* Chat header */}
           {!isSettingsPage && (
             <div className="bg-white border-b px-4 py-3">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -284,9 +283,9 @@ function App() {
             </div>
           )}
 
-          {/* Messages */}
+          {/* Messages area */}
           <div className="flex-1 overflow-y-auto bg-gray-50">
-            <div className="max-w-4xl mx-auto px-4 py-6 pb-32">
+            <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
               <Routes>
                 <Route
                   path="/"
@@ -330,9 +329,9 @@ function App() {
             </div>
           </div>
 
-          {/* Input – pinned to bottom */}
+          {/* INPUT – NOW INSIDE MAIN PANEL, NEVER OVERLAPS SIDEBAR */}
           {!isSettingsPage && (
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t">
+            <div className="bg-white border-t">
               <div className="max-w-4xl mx-auto">
                 <ChatInput
                   onSend={sendMessage}
@@ -347,9 +346,9 @@ function App() {
         </div>
       </div>
 
-      {/* ALERTS */}
+      {/* ALERTS – fixed position, never blocked */}
       {!isSettingsPage && !hasApiKey && (
-        <div className="fixed bottom-20 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
+        <div className="fixed bottom-24 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
           <div className="flex items-center gap-3 text-yellow-800">
             <AlertCircle size={20} />
             <p className="text-sm font-medium">Add your API key in Settings to start chatting</p>
@@ -361,7 +360,7 @@ function App() {
       )}
 
       {!isSettingsPage && error && (
-        <div className="fixed bottom-20 left-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 z-50 shadow-lg">
+        <div className="fixed bottom-24 left-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 z-50 shadow-lg">
           <div className="flex items-center gap-3 text-red-800">
             <AlertCircle size={20} />
             <p className="text-sm font-medium">{error}</p>
