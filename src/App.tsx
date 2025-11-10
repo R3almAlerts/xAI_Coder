@@ -24,7 +24,7 @@ import { ProjectsList } from './components/ProjectsList'
 import { ConversationsList } from './components/ConversationsList'
 import { ChatInput } from './components/ChatInput'
 import { SettingsPage } from './components/SettingsPage'
-import { useLocation, useNavigate, Routes, Route, Link } from 'react-router-dom'
+import { useLocation, Routes, Route, Link } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
 // MARKDOWN WITH COPY BUTTONS
@@ -302,8 +302,13 @@ function App() {
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg">
               {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-              <span className="text-white font-bold text-xl">CG</span>
+            {/* CUSTOM LOGO SUPPORT */}
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border border-gray-300">
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+              ) : (
+                <span className="text-white font-bold text-xl">CG</span>
+              )}
             </div>
             <h1 className="text-xl font-bold text-gray-900">Code Guru</h1>
           </div>
@@ -369,8 +374,12 @@ function App() {
                   messages.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center">
                       <div className="space-y-4">
-                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-                          <span className="text-white font-bold text-4xl">CG</span>
+                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border-4 border-white shadow-xl">
+                          {settings.logoUrl ? (
+                            <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                          ) : (
+                            <span className="text-white font-bold text-4xl">CG</span>
+                          )}
                         </div>
                         <h2 className="text-2xl font-bold">Welcome to Code Guru</h2>
                         <p className="text-gray-500">Your AI-powered coding assistant</p>
