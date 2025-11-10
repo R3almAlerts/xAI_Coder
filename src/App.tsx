@@ -42,9 +42,10 @@ function App() {
   const [activeTab, setActiveTab] = useState<'instructions' | 'files' | 'history'>('instructions')
   const [instructions, setInstructions] = useState('')
 
-  // DELETE MODAL – NOW 100% RELIABLE
+  // DELETE MODAL – NOW USING ID ONLY (BULLETPROOF)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [projectToDelete, setProjectToDelete] = useState<any>(null)
+  const [projectIdToDelete, setProjectIdToDelete] = useState<string | null>(null)
+  const [projectTitleToDelete, setProjectTitleToDelete] = useState<string>('')
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [currentConvId, setCurrentConvId] = useState<string | null>(null)
@@ -131,29 +132,28 @@ function App() {
     }
   }
 
-  // OPEN MODAL – SAFE CLONE
-  const openDeleteModal = (project: any) => {
-    setProjectToDelete({ ...project })
+  // OPEN MODAL – STORE ID + TITLE ONLY
+  const openDeleteModal = (project: { id: string; title: string }) => {
+    setProjectIdToDelete(project.id)
+    setProjectTitleToDelete(project.title)
     setDeleteModalOpen(true)
   }
 
-  // CONFIRM DELETE – BULLETPROOF
+  // CONFIRM DELETE – 100% RELIABLE
   const confirmDelete = async () => {
-    if (!projectToDelete?.id) {
-      setError('Invalid project selected')
+    if (!projectIdToDelete) {
+      setError('No project selected')
       return
     }
-
-    const projectId = projectToDelete.id
 
     try {
       // 1. Delete files
       const { data: files } = await supabase.storage
         .from('project-files')
-        .list(`project_${projectId}`)
+        .list(`project_${projectIdToDelete}`)
 
       if (files && files.length > 0) {
-        const filePaths = files.map(f => `project_${projectId}/${f.name}`)
+        const filePaths = files.map(f => `project_${projectIdToDelete}/${f.name}`)
         await supabase.storage.from('project-files').remove(filePaths)
       }
 
@@ -161,7 +161,7 @@ function App() {
       const { data: convs } = await supabase
         .from('conversations')
         .select('id')
-        .eq('project_id', projectId)
+        .eq('project_id', projectIdToDelete)
 
       if (convs && convs.length > 0) {
         await supabase.from('conversations').delete().in('id', convs.map(c => c.id))
@@ -171,20 +171,21 @@ function App() {
       const { error: deleteError } = await supabase
         .from('projects')
         .delete()
-        .eq('id', projectId)
+        .eq('id', projectIdToDelete)
 
       if (deleteError) throw deleteError
 
       // 4. Update UI
-      setProjects(prev => prev.filter(p => p.id !== projectId))
-      if (currentProject?.id === projectId) {
+      setProjects(prev => prev.filter(p => p.id !== projectIdToDelete))
+      if (currentProject?.id === projectIdToDelete) {
         setCurrentProject(null)
         setCurrentProjectId(null)
       }
       setConfigProject(null)
 
-      // ONLY CLEAR ON SUCCESS
-      setProjectToDelete(null)
+      // SUCCESS → CLEAR
+      setProjectIdToDelete(null)
+      setProjectTitleToDelete('')
       setDeleteModalOpen(false)
     } catch (err: any) {
       console.error('Delete failed:', err)
@@ -451,7 +452,7 @@ function App() {
       </div>
 
       {/* DELETE MODAL */}
-      {deleteModalOpen && projectToDelete && (
+      {deleteModalOpen && projectIdToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteModalOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 animate-in fade-in zoom-in-95">
@@ -460,7 +461,7 @@ function App() {
                 <Trash2 size={32} className="text-red-600" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                Permanently delete "{projectToDelete.title}"?
+                Permanently delete "{projectTitleToDelete}"?
               </h3>
               <p className="text-gray-600 mb-8">
                 This will delete:
