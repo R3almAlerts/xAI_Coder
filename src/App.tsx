@@ -4,8 +4,8 @@ import { Message, FileAttachment } from './types';
 import { useSettings } from './hooks/useSettings';
 import { useMessages } from './hooks/useMessages';
 import { ModelSelectorModal } from './components/ModelSelectorModal';
-import { ConversationsList } from './components/ConversationsList';
 import { ProjectsList } from './components/ProjectsList';
+import { ConversationsList } from './components/ConversationsList';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SettingsPage } from './components/SettingsPage';
@@ -20,7 +20,7 @@ function App() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings();
-  const { messages, conversations, currentConv, projects, currentProject, addMessage, isLoading: isLoadingMessages, switchConversation, createConversation, switchProject, createProject, deleteConversation, updateConversationTitle } = useMessages(currentConvId, currentProjectId);
+  const { messages, conversations, currentConv, projects, currentProject, addMessage, isLoading: isLoadingMessages, switchConversation, switchProject, createConversation, createProject, deleteConversation, updateConversationTitle } = useMessages(currentConvId, currentProjectId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -280,6 +280,16 @@ function App() {
               projects={projects}
               onSelectProject={handleSelectProject}
               onCreateNew={handleCreateNewProject}
+              onDeleteProject={(projectId) => {
+                if (confirm('Delete this project? All conversations will be unassigned.')) {
+                  // Optional delete logic: Call hook or API
+                  console.log('Delete project:', projectId); // Placeholder for now
+                }
+              }}
+              onUpdateTitle={(projectId, title) => {
+                // Optional update logic
+                console.log('Update project:', projectId, title); // Placeholder
+              }}
             />
             {/* Conversations Sidebar */}
             <ConversationsList

@@ -7,13 +7,17 @@ interface ProjectsListProps {
   projects: Project[];
   onSelectProject: (projectId: string) => void;
   onCreateNew: () => void;
+  onDeleteProject?: (projectId: string) => void; // Optional, as projects may not be deletable if containing convs
+  onUpdateTitle?: (projectId: string, title: string) => void; // Optional for editing
 }
 
 export function ProjectsList({ 
   currentProjectId, 
   projects, 
   onSelectProject, 
-  onCreateNew 
+  onCreateNew,
+  onDeleteProject,
+  onUpdateTitle 
 }: ProjectsListProps) {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -24,11 +28,18 @@ export function ProjectsList({
   };
 
   const handleEditSave = (projectId: string) => {
-    if (editTitle.trim()) {
-      // Call parent onUpdateProject if needed
-      console.log('Update project title:', editTitle); // Placeholder
+    if (editTitle.trim() && onUpdateTitle) {
+      onUpdateTitle(projectId, editTitle.trim());
     }
     setEditingProjectId(null);
+  };
+
+  const handleDelete = (projectId: string) => {
+    if (onDeleteProject) {
+      if (confirm('Delete this project? All conversations will be unassigned.')) {
+        onDeleteProject(projectId);
+      }
+    }
   };
 
   return (
@@ -88,6 +99,18 @@ export function ProjectsList({
                   >
                     <Edit3 size={14} />
                   </button>
+                  {onDeleteProject && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(proj.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                      aria-label="Delete project"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             </li>
