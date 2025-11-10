@@ -12,6 +12,7 @@ import {
   Folder,
   Download,
   File,
+  Send,
 } from 'lucide-react'
 import { Message, FileAttachment } from './types'
 import { useSettings } from './hooks/useSettings'
@@ -97,8 +98,6 @@ function App() {
       .eq('id', project.id)
       .maybeSingle()
     setInstructions(data?.instructions || '')
-
-    if (activeTab === 'files') loadProjectFiles(project.id)
   }
 
   const loadProjectFiles = async (projectId: string) => {
@@ -169,12 +168,67 @@ function App() {
     setConfigProject(null)
   }
 
+  // FULLY RESTORED & WORKING SEND MESSAGE
   const sendMessage = async (content: string) => {
-    if (!settings.apiKey || !currentConv) return
-    await addMessage({ role: 'user', content, timestamp: Date.now() })
+    if (!settings.apiKey) {
+      setError('Set API key in Settings')
+      navigate('/settings')
+      return
+    }
+    if (!currentConv) {
+      setError('No conversation selected')
+      return
+    }
+    if (!content.trim()) return
+
+    const userMessage = {
+      role: 'user' as const,
+      content,
+      timestamp: Date.now(),
+    }
+
+    await addMessage(userMessage)
     setIsLoading(true)
-    // ... rest of send logic (unchanged)
-    setIsLoading(false)
+    setError(null)
+
+    try {
+      const res = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settings.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.model === 'auto' ? 'grok-2-latest' : settings.model,
+          messages: [
+            ...(instructions ? [{ role: 'system', content: instructions }] : []),
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content },
+          ],
+          temperature: 0.7,
+          max_tokens: 4096,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`API Error ${res.status}: ${err}`)
+      }
+
+      const data = await res.json()
+      const assistantContent = data.choices?.[0]?.message?.content || 'No response'
+
+      await addMessage({
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: Date.now(),
+      })
+    } catch (err: any) {
+      console.error('Send failed:', err)
+      setError(err.message || 'Failed to send message')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   if (isLoadingSettings || isLoadingMessages) {
@@ -248,7 +302,7 @@ function App() {
 
         {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-        {/* MAIN */}
+        {/* MAIN CHAT */}
         <div className="flex-1 flex flex-col">
           {!isSettingsPage && (
             <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
@@ -268,11 +322,26 @@ function App() {
                           <span className="text-white font-bold text-4xl">G</span>
                         </div>
                         <h2 className="text-2xl font-bold">Start a conversation</h2>
+                        <p className="text-gray-500">Ask me anything!</p>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-6">
                       {messages.map((m, i) => <ChatMessage key={m.id || i} message={m} />)}
+                      {isLoading && (
+                        <div className="flex gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 text-white animate-spin" />
+                          </div>
+                          <div className="bg-gray-100 rounded-2xl px-4 py-3">
+                            <div className="flex gap-1">
+                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
+                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div ref={messagesEndRef} />
                     </div>
                   )
@@ -282,6 +351,7 @@ function App() {
             </div>
           </div>
 
+          {/* CHAT INPUT */}
           {!isSettingsPage && (
             <div className="bg-white border-t">
               <div className="max-w-4xl mx-auto">
@@ -298,7 +368,7 @@ function App() {
         </div>
       </div>
 
-      {/* CONFIG + FILE UPLOAD */}
+      {/* CONFIG PANEL + FILE UPLOAD */}
       {configProject && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setConfigProject(null)} />
@@ -382,7 +452,33 @@ function App() {
         </div>
       )}
 
-      <ModelSelectorModal isOpen={isModelSelectorOpen} onClose={() => setIsModelSelectorOpen(false)} currentModel={settings.model} onSelectModel={(m) => setSettings({ ...settings, model: m })} />
+      {/* ALERTS */}
+      {!isSettingsPage && !settings.apiKey && (
+        <div className="fixed bottom-24 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
+          <div className="flex items-center gap-3 text-yellow-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">Add your API key in Settings to chat</p>
+            <button onClick={() => navigate('/settings')} className="ml-auto underline text-sm">Settings</button>
+          </div>
+        </div>
+      )}
+
+      {!isSettingsPage && error && (
+        <div className="fixed bottom-24 left-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 z-50 shadow-lg">
+          <div className="flex items-center gap-3 text-red-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-sm">Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      <ModelSelectorModal
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        currentModel={settings.model}
+        onSelectModel={(m) => setSettings({ ...settings, model: m })}
+      />
     </div>
   )
 }
