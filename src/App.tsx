@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import {
   Settings as SettingsIcon,
   Loader2,
@@ -89,11 +89,11 @@ const ChatMessage = ({ message }: { message: Message }) => {
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
           <span className="text-white font-bold text-sm">G</span>
         </div>
       )}
-      <div className={`max-w-2xl ${isUser ? 'bg-blue-600 text-white' : 'bg-white'} rounded-2xl px-5 py-3 shadow-sm`}>
+      <div className={`max-w-2xl ${isUser ? 'bg-indigo-600 text-white' : 'bg-white'} rounded-2xl px-5 py-3 shadow-sm`}>
         {isUser ? (
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
         ) : (
@@ -115,7 +115,6 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Project Config Modal
   const [configProject, setConfigProject] = useState<any>(null)
   const [activeTab, setActiveTab] = useState<'instructions' | 'files'>('instructions')
   const [instructions, setInstructions] = useState('')
@@ -123,7 +122,6 @@ function App() {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Delete Modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [projectIdToDelete, setProjectIdToDelete] = useState<string | null>(null)
   const [projectTitleToDelete, setProjectTitleToDelete] = useState('')
@@ -158,7 +156,6 @@ function App() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
-  const navigate = useNavigate()
   const isSettingsPage = location.pathname === '/settings'
 
   useEffect(() => {
@@ -234,7 +231,6 @@ function App() {
       .eq('id', configProject.id)
   }
 
-  // FIXED: FULL CONVERSATION HISTORY + MULTIPLE MESSAGES WORK
   const sendMessage = async (content: string) => {
     if (!settings.apiKey || !currentConv || !content.trim()) return
 
@@ -292,7 +288,7 @@ function App() {
   if (isLoadingSettings || isLoadingMessages) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
       </div>
     )
   }
@@ -306,10 +302,10 @@ function App() {
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg">
               {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-              <span className="text-white font-bold text-xl">G</span>
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+              <span className="text-white font-bold text-xl">CG</span>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Grok Chat</h1>
+            <h1 className="text-xl font-bold text-gray-900">Code Guru</h1>
           </div>
           <Link to="/settings" className="p-2 hover:bg-gray-100 rounded-lg">
             <SettingsIcon size={24} className="text-gray-600" />
@@ -329,7 +325,7 @@ function App() {
                   placeholder="Search projects..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 text-sm bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3 py-2 text-sm bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -373,11 +369,11 @@ function App() {
                   messages.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center">
                       <div className="space-y-4">
-                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-                          <span className="text-white font-bold text-4xl">G</span>
+                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+                          <span className="text-white font-bold text-4xl">CG</span>
                         </div>
-                        <h2 className="text-2xl font-bold">Start a conversation</h2>
-                        <p className="text-gray-500">Ask me anything!</p>
+                        <h2 className="text-2xl font-bold">Welcome to Code Guru</h2>
+                        <p className="text-gray-500">Your AI-powered coding assistant</p>
                       </div>
                     </div>
                   ) : (
@@ -385,7 +381,7 @@ function App() {
                       {messages.map((m, i) => <ChatMessage key={m.id || i} message={m} />)}
                       {isLoading && (
                         <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                             <Loader2 className="w-5 h-5 text-white animate-spin" />
                           </div>
                           <div className="bg-gray-100 rounded-2xl px-4 py-3">
@@ -422,6 +418,15 @@ function App() {
         </div>
       </div>
 
+      {/* FOOTER */}
+      {!isSettingsPage && (
+        <footer className="bg-white border-t py-3 px-6 text-center">
+          <p className="text-xs text-gray-500">
+            Powered by <span className="font-semibold text-indigo-600">xAI</span>
+          </p>
+        </footer>
+      )}
+
       {/* CONFIG MODAL */}
       {configProject && (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -436,8 +441,8 @@ function App() {
             </div>
 
             <div className="flex border-b">
-              <button onClick={() => setActiveTab('instructions')} className={`px-6 py-3 font-medium ${activeTab === 'instructions' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>Instructions</button>
-              <button onClick={() => { setActiveTab('files'); loadProjectFiles(configProject.id); }} className={`px-6 py-3 font-medium ${activeTab === 'files' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>
+              <button onClick={() => setActiveTab('instructions')} className={`px-6 py-3 font-medium ${activeTab === 'instructions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}>Instructions</button>
+              <button onClick={() => { setActiveTab('files'); loadProjectFiles(configProject.id); }} className={`px-6 py-3 font-medium ${activeTab === 'files' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}>
                 Files ({projectFiles.length})
               </button>
             </div>
@@ -448,7 +453,7 @@ function App() {
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
                   rows={15}
-                  className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
                   placeholder="You are a senior full-stack engineer..."
                 />
               )}
@@ -458,13 +463,13 @@ function App() {
                     onClick={() => fileInputRef.current?.click()}
                     onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files); }}
                     onDragOver={(e) => e.preventDefault()}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-500"
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-indigo-500"
                   >
                     <Upload size={48} className="mx-auto mb-4 text-gray-400" />
                     <p className="text-gray-600 font-medium">Drop files here or click</p>
-                    <input ref={fileInputRef} type="file" multiple onChange={(e) => handleFileUpload(e.dataTransfer?.files || e.target.files)} className="hidden" />
+                    <input ref={fileInputRef} type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} className="hidden" />
                   </div>
-                  {uploading && <p className="mt-4 text-blue-600">Uploading...</p>}
+                  {uploading && <p className="mt-4 text-indigo-600">Uploading...</p>}
                   {projectFiles.map(file => (
                     <div key={file.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mt-2">
                       <div className="flex items-center gap-3">
@@ -484,7 +489,7 @@ function App() {
             {activeTab === 'instructions' && (
               <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
                 <button onClick={() => setConfigProject(null)} className="px-6 py-2 bg-gray-100 rounded-lg">Cancel</button>
-                <button onClick={saveInstructions} className="px-6 py-2 bg-blue-600 text-white rounded-lg">Save</button>
+                <button onClick={saveInstructions} className="px-6 py-2 bg-indigo-600 text-white rounded-lg">Save</button>
               </div>
             )}
           </div>
