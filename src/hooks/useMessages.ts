@@ -1,3 +1,4 @@
+// src/hooks/useMessages.ts
 import { useState, useEffect, useRef } from 'react'
 import { supabase, getUserId } from '../lib/supabase'
 import { Message, FileAttachment, Conversation, Project } from '../types'
@@ -21,19 +22,9 @@ export function useMessages(
   const userIdRef = useRef<string | null>(null)
   const initializedRef = useRef(false)
 
-  // -----------------------------------------------------------------
-  // Helper to safely call the parent setters
-  // -----------------------------------------------------------------
-  const safeSetProjectId = (id: string | null) => {
-    setters?.setCurrentProjectId?.(id)
-  }
-  const safeSetConvId = (id: string | null) => {
-    setters?.setCurrentConvId?.(id)
-  }
+  const safeSetProjectId = (id: string | null) => setters?.setCurrentProjectId?.(id)
+  const safeSetConvId = (id: string | null) => setters?.setCurrentConvId?.(id)
 
-  // -----------------------------------------------------------------
-  // Loaders
-  // -----------------------------------------------------------------
   const loadProjects = async () => {
     const userId = userIdRef.current
     if (!userId) return
@@ -72,9 +63,6 @@ export function useMessages(
     }
   }
 
-  // -----------------------------------------------------------------
-  // Switchers – now update parent state
-  // -----------------------------------------------------------------
   const switchProject = async (projectId: string) => {
     const { data, error } = await supabase
       .from('projects')
@@ -88,10 +76,10 @@ export function useMessages(
     }
 
     setCurrentProject(data)
-    safeSetProjectId(projectId)          // <-- parent state
+    safeSetProjectId(projectId)
     await loadConversations(projectId)
     setCurrentConv(null)
-    safeSetConvId(null)                  // <-- parent state
+    safeSetConvId(null)
   }
 
   const switchConversation = async (convId: string) => {
@@ -108,7 +96,7 @@ export function useMessages(
     }
 
     setCurrentConv(data)
-    safeSetConvId(convId)                // <-- parent state
+    safeSetConvId(convId)
     await loadMessages(convId)
     setIsLoading(false)
   }
@@ -135,19 +123,18 @@ export function useMessages(
     }
   }
 
-  // -----------------------------------------------------------------
-  // Creators
-  // -----------------------------------------------------------------
+  // FIXED: No more reverseProject typo + no duplicate "Default Project"
   const createProject = async (title = 'New Project') => {
     const userId = userIdRef.current
     if (!userId) return
 
+    // Check if project already exists
     const { data: existing } = await supabase
       .from('projects')
       .select('id')
       .eq('user_id', userId)
       .eq('title', title)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       await switchProject(existing.id)
@@ -166,7 +153,7 @@ export function useMessages(
     }
 
     setProjects(p => [newProj, ...p])
-    await reverseProject(newProj.id)
+    await switchProject(newProj.id)  // ← Fixed: was reverseProject
   }
 
   const createConversation = async (title = 'New Conversation') => {
@@ -190,9 +177,6 @@ export function useMessages(
     await switchConversation(newConv.id)
   }
 
-  // -----------------------------------------------------------------
-  // Other actions (delete / rename)
-  // -----------------------------------------------------------------
   const deleteConversation = async (convId: string) => {
     await supabase.from('conversations').delete().eq('id', convId)
     setConversations(c => c.filter(x => x.id !== convId))
@@ -230,7 +214,6 @@ export function useMessages(
     const fullMsg: Message = { ...msg, id: data.id }
     setMessages(m => [...m, fullMsg])
 
-    // bump conversation timestamp
     await supabase
       .from('conversations')
       .update({ updated_at: new Date().toISOString() })
@@ -239,9 +222,6 @@ export function useMessages(
     await loadConversations(currentProject?.id || null)
   }
 
-  // -----------------------------------------------------------------
-  // Initialisation
-  // -----------------------------------------------------------------
   useEffect(() => {
     if (initializedRef.current) return
 
@@ -261,7 +241,7 @@ export function useMessages(
       } else if (projects.length > 0) {
         await switchProject(projects[0].id)
       } else {
-        await createProject('Default Project')
+        await createProject('Default Project')  // ← Only creates if not exists
       }
 
       if (currentConvId) {
@@ -279,7 +259,6 @@ export function useMessages(
     init()
   }, [])
 
-  // React to external prop changes
   useEffect(() => {
     if (!initializedRef.current || !currentProjectId) return
     switchProject(currentProjectId)
