@@ -71,9 +71,11 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     }
 
     setCurrentProject(projectData)
+    setCurrentProjectId(projectId) // Set the state to trigger prop change
     await loadConversations(projectId)
     // Reset to no current conv when switching project
     setCurrentConv(null)
+    setCurrentConvId(null)
   }
 
   const switchConversation = async (convId: string) => {
@@ -93,6 +95,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     }
 
     setCurrentConv(convData)
+    setCurrentConvId(convId) // Set the state to trigger prop change
     await loadMessages(convId)
   }
 
@@ -318,7 +321,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     initialize()
   }, [])
 
-  // Add useEffect to react to currentConvId prop changes for switching
+  // Add useEffect to react to currentConvId param changes for switching
   useEffect(() => {
     if (!initializedRef.current || !currentConvId) return
 
