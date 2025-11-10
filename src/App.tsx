@@ -93,10 +93,17 @@ function App() {
 
   const handleUpdateTitle = (itemId: string, newTitle: string, isProject: boolean) => {
     if (isProject) {
-      // Update project title (implement API if needed)
+      // Update project title
       console.log('Update project title:', itemId, newTitle);
     } else {
       updateConversationTitle(itemId, newTitle);
+    }
+  };
+
+  const handleDeleteProject = (projectId: string) => {
+    if (confirm('Delete this project? All conversations will be unassigned to the default project.')) {
+      // Implement deletion: Delete project, set convs project_id to null or default
+      console.log('Delete project:', projectId); // Placeholder - add API call
     }
   };
 
@@ -123,7 +130,7 @@ function App() {
       await addMessage(userMessage);
     } catch (err) {
       console.error('Failed to add user message:', err);
-      setError('Failed to send message');
+      setError('Failed to add user message');
       return;
     }
 
@@ -277,7 +284,7 @@ function App() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <div className="fixed md:static inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200">
+        <div className={`fixed md:static inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200`}>
           <div className="flex h-full">
             {/* Projects Sidebar */}
             <ProjectsList
