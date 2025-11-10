@@ -1,5 +1,12 @@
+// src/App.tsx
 import { useRef, useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Loader2, AlertCircle, Menu, X } from 'lucide-react'
+import {
+  Settings as SettingsIcon,
+  Loader2,
+  AlertCircle,
+  Menu,
+  X,
+} from 'lucide-react'
 import { Message, FileAttachment } from './types'
 import { useSettings } from './hooks/useSettings'
 import { useMessages } from './hooks/useMessages'
@@ -9,18 +16,29 @@ import { ConversationsList } from './components/ConversationsList'
 import { ChatMessage } from './components/ChatMessage'
 import { ChatInput } from './components/ChatInput'
 import { SettingsPage } from './components/SettingsPage'
-import { useLocation, useNavigate, Routes, Route, Link } from 'react-router-dom'
+import {
+  useLocation,
+  useNavigate,
+  Routes,
+  Route,
+  Link,
+} from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
 function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false)
+
+  // These two pieces of state control which project/conversation is active
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [currentConvId, setCurrentConvId] = useState<string | null>(null)
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings()
+
+  // Pass the setters into the hook – this is what fixes the ReferenceError
   const {
     messages,
     conversations,
@@ -35,7 +53,10 @@ function App() {
     createProject,
     deleteConversation,
     updateConversationTitle,
-  } = useMessages(currentConvId, currentProjectId)
+  } = useMessages(currentConvId, currentProjectId, {
+    setCurrentProjectId,
+    setCurrentConvId,
+  })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
@@ -43,12 +64,14 @@ function App() {
 
   const isSettingsPage = location.pathname === '/settings'
 
-  // --------------------------------------------------------------------
-  // Auth init (anonymous)
-  // --------------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // Anonymous auth (runs once)
+  // -----------------------------------------------------------------
   useEffect(() => {
     async function initAuth() {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) {
         const { error } = await supabase.auth.signInAnonymously()
         if (error) console.warn('Anonymous auth disabled:', error.message)
@@ -57,15 +80,16 @@ function App() {
     initAuth()
   }, [])
 
-  // --------------------------------------------------------------------
-  // Scroll to bottom when new messages arrive
-  // --------------------------------------------------------------------
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // -----------------------------------------------------------------
+  // Scroll to bottom on new messages
+  // -----------------------------------------------------------------
+  const scrollToBottom = () =>
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   useEffect(() => scrollToBottom(), [messages])
 
-  // --------------------------------------------------------------------
-  // Handlers
-  // --------------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // Sidebar handlers
+  // -----------------------------------------------------------------
   const handleSelectProject = (projectId: string) => {
     setCurrentProjectId(projectId)
     setCurrentConvId(null)
@@ -82,7 +106,11 @@ function App() {
 
   const handleDeleteConv = (convId: string) => deleteConversation(convId)
 
-  const handleUpdateTitle = (itemId: string, newTitle: string, isProject: boolean) => {
+  const handleUpdateTitle = (
+    itemId: string,
+    newTitle: string,
+    isProject: boolean
+  ) => {
     if (isProject) {
       console.log('TODO: update project title', itemId, newTitle)
     } else {
@@ -91,7 +119,11 @@ function App() {
   }
 
   const handleDeleteProject = (projectId: string) => {
-    if (confirm('Delete this project? All conversations will be unassigned.')) {
+    if (
+      confirm(
+        'Delete this project? All conversations will be moved to the default project.'
+      )
+    ) {
       console.log('TODO: delete project', projectId)
     }
   }
@@ -100,10 +132,13 @@ function App() {
     console.log('TODO: update project title', projectId, newTitle)
   }
 
-  // --------------------------------------------------------------------
+  // -----------------------------------------------------------------
   // Send message to Grok
-  // --------------------------------------------------------------------
-  const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
+  // -----------------------------------------------------------------
+  const sendMessage = async (
+    content: string,
+    attachments?: FileAttachment[]
+  ) => {
     if (!settings.apiKey) {
       setError('Please configure your API key in Settings')
       navigate('/settings')
@@ -125,7 +160,7 @@ function App() {
     try {
       await addMessage(userMsg)
     } catch (e) {
-      setError('Failed to add message')
+      setError('Failed to save message')
       return
     }
 
@@ -134,12 +169,16 @@ function App() {
 
     try {
       const apiUrl = `${settings.baseUrl}/v1/chat/completions`
-      const model = settings.model === 'auto' ? 'grok-2-latest' : settings.model
+      const model =
+        settings.model === 'auto' ? 'grok-2-latest' : settings.model
 
-      const apiMessages = messages.map(m => ({ role: m.role, content: m.content }))
+      const apiMessages = messages.map(m => ({
+        role: m.role,
+        content: m.content,
+      }))
+
       let finalContent = content
-
-      // (attachment handling omitted for brevity – works as before)
+      // (attachment handling kept simple – you already have it working)
 
       const payload = {
         model,
@@ -155,12 +194,16 @@ function App() {
         body: JSON.stringify(payload),
       })
 
-      if (!res.ok) throw new Error(`API error ${res.status}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error?.message || `API error ${res.status}`)
+      }
 
       const data = await res.json()
       const assistantMsg: Omit<Message, 'id'> = {
         role: 'assistant',
-        content: data.choices?.[0]?.message?.content || 'No response',
+        content:
+          data.choices?.[0]?.message?.content || 'No response from Grok',
         timestamp: Date.now(),
       }
 
@@ -174,17 +217,23 @@ function App() {
 
   const hasApiKey = Boolean(settings.apiKey)
 
+  // -----------------------------------------------------------------
+  // Loading screen
+  // -----------------------------------------------------------------
   if (isLoadingSettings || isLoadingMessages) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
       </div>
     )
   }
 
+  // -----------------------------------------------------------------
+  // Main UI
+  // -----------------------------------------------------------------
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* ────────────────────── HEADER ────────────────────── */}
+      {/* HEADER */}
       {!isSettingsPage && (
         <header className="bg-white border-b shadow-sm flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -195,34 +244,34 @@ function App() {
             >
               {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">G</span>
+
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+              <span className="text-white font-bold text-xl">G</span>
             </div>
+
             <div>
               <h1 className="text-xl font-bold text-gray-900">Grok Chat</h1>
               <p className="text-sm text-gray-500">Powered by xAI</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link
-              to="/settings"
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Settings"
-            >
-              <SettingsIcon size={24} className="text-gray-600" />
-            </Link>
-          </div>
+          <Link
+            to="/settings"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Settings"
+          >
+            <SettingsIcon size={24} className="text-gray-600" />
+          </Link>
         </header>
       )}
 
-      {/* ────────────────────── MAIN LAYOUT ────────────────────── */}
+      {/* MAIN LAYOUT */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* SIDEBAR */}
         <div
-          className={`fixed md:static inset-y-0 left-0 z-50 transform ${
+          className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform ${
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } md:translate-x-0 transition-transform duration-200 ease-in-out w-64 bg-white border-r border-gray-200`}
+          } md:translate-x-0 transition-transform duration-200 ease-in-out`}
         >
           <div className="flex h-full">
             <ProjectsList
@@ -252,7 +301,7 @@ function App() {
           />
         )}
 
-        {/* Main chat area */}
+        {/* CHAT AREA */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!isSettingsPage && (
             <div className="border-b border-gray-200 bg-white">
@@ -273,14 +322,17 @@ function App() {
                     {messages.length === 0 ? (
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center space-y-4">
-                          <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-                            <span className="text-white font-bold text-3xl">G</span>
+                          <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+                            <span className="text-white font-bold text-4xl">
+                              G
+                            </span>
                           </div>
                           <h2 className="text-2xl font-bold text-gray-900">
                             Start a conversation
                           </h2>
                           <p className="text-gray-500 max-w-md">
-                            Ask me anything! I'm Grok, powered by xAI's advanced language model.
+                            Ask me anything! I'm Grok, powered by xAI's
+                            advanced language model.
                           </p>
                         </div>
                       </div>
@@ -289,16 +341,20 @@ function App() {
                         {messages.map((msg, i) => (
                           <ChatMessage key={msg.id || i} message={msg} />
                         ))}
+
                         {isLoading && (
                           <div className="flex gap-3 justify-start">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                              <Loader2 size={18} className="text-white animate-spin" />
+                            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                              <Loader2
+                                size={20}
+                                className="text-white animate-spin"
+                              />
                             </div>
-                            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                            <div className="bg-gray-100 rounded-2xl rounded-bl-none px-4 py-3">
                               <div className="flex gap-1">
                                 <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75" />
                                 <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300" />
                               </div>
                             </div>
                           </div>
@@ -313,7 +369,7 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
 
-          {/* Chat input */}
+          {/* INPUT */}
           {!isSettingsPage && (
             <ChatInput
               onSend={sendMessage}
@@ -326,7 +382,7 @@ function App() {
         </div>
       </div>
 
-      {/* ────────────────────── ALERT BANNERS ────────────────────── */}
+      {/* ALERT BANNERS */}
       {!isSettingsPage && !hasApiKey && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
           <div className="max-w-4xl mx-auto flex items-center gap-3 text-yellow-800">
@@ -359,7 +415,7 @@ function App() {
         </div>
       )}
 
-      {/* Model selector modal */}
+      {/* MODEL SELECTOR MODAL */}
       <ModelSelectorModal
         isOpen={isModelSelectorOpen}
         onClose={() => setIsModelSelectorOpen(false)}
