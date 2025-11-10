@@ -115,7 +115,6 @@ function App() {
     }
   }
 
-  // FIXED: syntax error on line 140
   const handleUpdateProjectTitle = async (projectId: string, newTitle: string) => {
     const trimmed = newTitle.trim()
     if (!trimmed) {
@@ -138,7 +137,7 @@ function App() {
       prev.map(p => (p.id === projectId ? { ...p, title: trimmed } : p))
     )
     if (currentProject?.id === projectId) {
-      setCurrentProject({ ...currentProject, title: trimmed }) // ← FIXED: was "title:eab trimmed"
+      setCurrentProject({ ...currentProject, title: trimmed })
     }
   }
 
@@ -317,4 +316,66 @@ function App() {
                               <div className="flex gap-1">
                                 <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
                                 <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
-                                <span className="w-2 h-2 bg-gray-400 rounded
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              }
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+
+          {!isSettingsPage && (
+            <ChatInput
+              onSend={sendMessage}
+              disabled={isLoading || !hasApiKey}
+              currentModel={settings.model}
+              onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+              currentProjectId={currentProjectId}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ALERTS */}
+      {!isSettingsPage && !hasApiKey && (
+        <div className="bg-yellow-50 border-t border-yellow-200 px-4 py-3 z-50">
+          <div className="max-w-4xl mx-auto flex items-center gap-3 text-yellow-800">
+            <AlertCircle size={20} />
+            <p className="text-sm">Add API key in Settings</p>
+            <button onClick={() => navigate('/settings')} className="ml-auto underline text-sm">
+              Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isSettingsPage && error && (
+        <div className="bg-red-50 border-t border-red-200 px-4 py-3 z-50">
+          <div className="max-w-4xl mx-auto flex items-center gap-3 text-red-800">
+            <AlertCircle size={20} />
+            <p className="text-sm">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-sm">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ModelSelectorModal
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        currentModel={settings.model}
+        onSelectModel={model => setSettings({ ...settings, model })}
+      />
+    </div>
+  )
+}
+
+export default App
