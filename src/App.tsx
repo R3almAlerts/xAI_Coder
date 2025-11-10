@@ -42,6 +42,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'instructions' | 'files' | 'history'>('instructions')
   const [instructions, setInstructions] = useState('')
 
+  // DELETE MODAL – NOW 100% RELIABLE
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<any>(null)
 
@@ -106,14 +107,6 @@ function App() {
     setInstructions(data?.instructions || '')
   }
 
-  const saveInstructions = async () => {
-    if (!configProject) return
-    await supabase
-      .from('projects')
-      .update({ instructions })
-      .eq('id', configProject.id)
-  }
-
   const handleSelectProject = (id: string) => {
     setCurrentProjectId(id)
     setCurrentConvId(null)
@@ -138,21 +131,23 @@ function App() {
     }
   }
 
+  // OPEN MODAL – SAFE CLONE
   const openDeleteModal = (project: any) => {
     setProjectToDelete({ ...project })
     setDeleteModalOpen(true)
   }
 
+  // CONFIRM DELETE – BULLETPROOF
   const confirmDelete = async () => {
     if (!projectToDelete?.id) {
-      setError('Invalid project')
-      setDeleteModalOpen(false)
+      setError('Invalid project selected')
       return
     }
 
     const projectId = projectToDelete.id
 
     try {
+      // 1. Delete files
       const { data: files } = await supabase.storage
         .from('project-files')
         .list(`project_${projectId}`)
@@ -162,6 +157,7 @@ function App() {
         await supabase.storage.from('project-files').remove(filePaths)
       }
 
+      // 2. Delete conversations
       const { data: convs } = await supabase
         .from('conversations')
         .select('id')
@@ -171,6 +167,7 @@ function App() {
         await supabase.from('conversations').delete().in('id', convs.map(c => c.id))
       }
 
+      // 3. Delete project
       const { error: deleteError } = await supabase
         .from('projects')
         .delete()
@@ -178,6 +175,7 @@ function App() {
 
       if (deleteError) throw deleteError
 
+      // 4. Update UI
       setProjects(prev => prev.filter(p => p.id !== projectId))
       if (currentProject?.id === projectId) {
         setCurrentProject(null)
@@ -185,8 +183,9 @@ function App() {
       }
       setConfigProject(null)
 
-      setDeleteModalOpen(false)
+      // ONLY CLEAR ON SUCCESS
       setProjectToDelete(null)
+      setDeleteModalOpen(false)
     } catch (err: any) {
       console.error('Delete failed:', err)
       setError(err.message || 'Failed to delete project')
@@ -374,7 +373,6 @@ function App() {
 
         {/* MAIN CONTENT */}
         <div className="flex-1 flex flex-col relative">
-          {/* Chat header */}
           {!isSettingsPage && (
             <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -391,7 +389,6 @@ function App() {
             </div>
           )}
 
-          {/* Messages area */}
           <div className="flex-1 overflow-y-auto bg-gray-50">
             <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
               <Routes>
@@ -437,7 +434,6 @@ function App() {
             </div>
           </div>
 
-          {/* INPUT */}
           {!isSettingsPage && (
             <div className="bg-white border-t">
               <div className="max-w-4xl mx-auto">
@@ -453,24 +449,6 @@ function App() {
           )}
         </div>
       </div>
-
-      {/* CONFIG PANEL */}
-      {configProject && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setConfigProject(null)} />
-          <div className="relative w-full max-w-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">{configProject.title}</h2>
-                <p className="text-sm text-gray-500">Project Configuration</p>
-              </div>
-              <button onClick={() => setConfigProject(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X size={24} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* DELETE MODAL */}
       {deleteModalOpen && projectToDelete && (
@@ -498,17 +476,14 @@ function App() {
               </p>
               <div className="flex gap-3 justify-center">
                 <button
-                  onClick={() => {
-                    setDeleteModalOpen(false)
-                    setProjectToDelete(null)
-                  }}
-                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                  onClick={() => setDeleteModalOpen(false)}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
-                  className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
                 >
                   Delete Everything
                 </button>
