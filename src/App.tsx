@@ -4,8 +4,7 @@ import { Message, FileAttachment } from './types';
 import { useSettings } from './hooks/useSettings';
 import { useMessages } from './hooks/useMessages';
 import { ModelSelectorModal } from './components/ModelSelectorModal';
-import { ProjectsList } from './components/ProjectsList';
-import { ConversationsList } from './components/ConversationsList';
+import { HierarchicalSidebar } from './components/HierarchicalSidebar';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SettingsPage } from './components/SettingsPage';
@@ -68,18 +67,14 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  const handleCreateNewProject = () => {
-    createProject();
-  };
-
   const handleSelectProject = (projectId: string) => {
     setCurrentProjectId(projectId);
     setCurrentConvId(null); // Reset conv when switching projects
     setIsSidebarOpen(false); // Close on mobile
   };
 
-  const handleCreateNewConv = () => {
-    createConversation();
+  const handleCreateNewProject = () => {
+    createProject();
   };
 
   const handleSelectConv = (convId: string) => {
@@ -87,28 +82,21 @@ function App() {
     setIsSidebarOpen(false); // Close on mobile
   };
 
+  const handleCreateNewConv = (projectId?: string) => {
+    createConversation(); // Can pass projectId if needed, but currentProject handles it
+  };
+
   const handleDeleteConv = (convId: string) => {
     deleteConversation(convId);
   };
 
-  const handleUpdateTitle = (convId: string, title: string) => {
-    updateConversationTitle(convId, title);
-  };
-
-  const handleDeleteProject = (projectId: string) => {
-    if (confirm('Delete this project? All conversations will be unassigned to the default project.')) {
-      // Note: Delete project and reassign convs to null or default
-      // For now, placeholder - implement API call if needed
-      console.log('Delete project:', projectId);
-      // Example: await supabase.from('projects').delete().eq('id', projectId)
-      // Then update convs project_id to null
+  const handleUpdateTitle = (itemId: string, newTitle: string, isProject: boolean) => {
+    if (isProject) {
+      // Update project title
+      console.log('Update project:', itemId, newTitle); // Placeholder for API
+    } else {
+      updateConversationTitle(itemId, newTitle);
     }
-  };
-
-  const handleUpdateProjectTitle = (projectId: string, title: string) => {
-    // Placeholder - implement API call
-    console.log('Update project title:', projectId, title);
-    // Example: await supabase.from('projects').update({ title }).eq('id', projectId)
   };
 
   const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
