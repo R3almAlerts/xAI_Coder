@@ -31,7 +31,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('') // ← NEW: Search state
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [currentConvId, setCurrentConvId] = useState<string | null>(null)
@@ -59,7 +59,6 @@ function App() {
     setCurrentConvId,
   })
 
-  // Filter projects & conversations
   const filteredProjects = projects.filter(p =>
     p.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -255,8 +254,8 @@ function App() {
           `}
         >
           <div className="h-full flex flex-col">
-            {/* SEARCH BAR – NEW! */}
-            <div className="px-3 pt-3 pb-2">
+            {/* SEARCH BAR – ZERO TOP PADDING */}
+            <div className="px-3 pt-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
