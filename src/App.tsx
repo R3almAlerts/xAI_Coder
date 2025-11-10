@@ -95,6 +95,22 @@ function App() {
     updateConversationTitle(convId, title);
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    if (confirm('Delete this project? All conversations will be unassigned to the default project.')) {
+      // Note: Delete project and reassign convs to null or default
+      // For now, placeholder - implement API call if needed
+      console.log('Delete project:', projectId);
+      // Example: await supabase.from('projects').delete().eq('id', projectId)
+      // Then update convs project_id to null
+    }
+  };
+
+  const handleUpdateProjectTitle = (projectId: string, title: string) => {
+    // Placeholder - implement API call
+    console.log('Update project title:', projectId, title);
+    // Example: await supabase.from('projects').update({ title }).eq('id', projectId)
+  };
+
   const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
     if (!settings.apiKey) {
       setError('Please configure your API key in settings');
@@ -280,16 +296,8 @@ function App() {
               projects={projects}
               onSelectProject={handleSelectProject}
               onCreateNew={handleCreateNewProject}
-              onDeleteProject={(projectId) => {
-                if (confirm('Delete this project? All conversations will be unassigned.')) {
-                  // Optional delete logic: Call hook or API
-                  console.log('Delete project:', projectId); // Placeholder for now
-                }
-              }}
-              onUpdateTitle={(projectId, title) => {
-                // Optional update logic
-                console.log('Update project:', projectId, title); // Placeholder
-              }}
+              onDeleteProject={handleDeleteProject}
+              onUpdateTitle={handleUpdateProjectTitle}
             />
             {/* Conversations Sidebar */}
             <ConversationsList
