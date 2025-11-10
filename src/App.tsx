@@ -235,7 +235,7 @@ function App() {
 
       {/* MAIN LAYOUT */}
       <div className="flex flex-1 relative overflow-hidden">
-        {/* SIDEBAR – fixed on mobile, static on desktop */}
+        {/* SIDEBAR */}
         <aside
           className={`
             fixed md:static top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200
@@ -260,6 +260,7 @@ function App() {
               onCreateNew={handleCreateNewConv}
               onDeleteConv={handleDeleteConv}
               onUpdateTitle={handleUpdateTitle}
+              currentProjectName={currentProject?.title || 'Default Project'}
             />
           </div>
         </aside>
@@ -272,7 +273,7 @@ function App() {
           />
         )}
 
-        {/* MAIN CONTENT – NOW PERFECT */}
+        {/* MAIN CONTENT */}
         <div className="flex-1 flex flex-col relative">
           {/* Chat header */}
           {!isSettingsPage && (
@@ -329,7 +330,7 @@ function App() {
             </div>
           </div>
 
-          {/* INPUT – NOW INSIDE MAIN PANEL, NEVER OVERLAPS SIDEBAR */}
+          {/* INPUT */}
           {!isSettingsPage && (
             <div className="bg-white border-t">
               <div className="max-w-4xl mx-auto">
@@ -346,7 +347,7 @@ function App() {
         </div>
       </div>
 
-      {/* ALERTS – fixed position, never blocked */}
+      {/* ALERTS */}
       {!isSettingsPage && !hasApiKey && (
         <div className="fixed bottom-24 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
           <div className="flex items-center gap-3 text-yellow-800">
