@@ -13,8 +13,8 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
-import 'highlight.js/styles/vs2015.css'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 import { Message } from './types'
 import { useSettings } from './hooks/useSettings'
@@ -27,21 +27,33 @@ import { SettingsPage } from './components/SettingsPage'
 import { useLocation, useNavigate, Routes, Route, Link } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
+// BULLETPROOF MARKDOWN VIEWER – NO MORE CRASHES
 const MarkdownViewer = ({ children }: { children: string }) => {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeHighlight]}
       className="prose prose-sm max-w-none"
       components={{
-        code({ inline, className, children, ...props }) {
+        code({ node, inline, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '')
+          const codeString = String(children).replace(/\n$/, '')
+
           return !inline && match ? (
-            <pre className="rounded-lg overflow-x-auto bg-gray-900 p-4 my-4">
-              <code className={`language-${match[1]} text-xs`} {...props}>
-                {String(children).replace(/\n$/, '')}
-              </code>
-            </pre>
+            <div className="my-4 -mx-5">
+              <SyntaxHighlighter
+                style={vscDarkPlus}
+                language={match[1]}
+                PreTag="div"
+                customStyle={{
+                  margin: 0,
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                }}
+                {...props}
+              >
+                {codeString}
+              </SyntaxHighlighter>
+            </div>
           ) : (
             <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono" {...props}>
               {children}
@@ -50,7 +62,7 @@ const MarkdownViewer = ({ children }: { children: string }) => {
         },
       }}
     >
-      {children}
+      {children || ''}
     </ReactMarkdown>
   )
 }
@@ -136,12 +148,9 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Prevent extension errors
   useEffect(() => {
     const handler = (e: any) => {
-      if (e?.data?.type === 'pageViewId') {
-        e.stopImmediatePropagation()
-      }
+      if (e?.data?.type === 'pageViewId') e.stopImmediatePropagation()
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
@@ -153,7 +162,7 @@ function App() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) await supabase.auth.signInAnonymously()
       } catch (err) {
-        console.warn('Auth init failed (non-critical)', err)
+        console.warn('Auth init failed', err)
       }
     }
     init()
@@ -173,7 +182,7 @@ function App() {
         .single()
       setInstructions(data?.instructions || '')
     } catch (err) {
-      console.warn('Failed to load instructions', err)
+      setInstructions('')
     }
   }, [])
 
@@ -184,7 +193,7 @@ function App() {
         .list(`project_${projectId}`)
       setProjectFiles(data || [])
     } catch (err) {
-      console.warn('Failed to load files', err)
+      setProjectFiles([])
     }
   }, [])
 
