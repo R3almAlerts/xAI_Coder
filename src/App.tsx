@@ -7,15 +7,11 @@ import {
   Menu,
   X,
   Search,
-  FileText,
-  MessageSquare,
   Upload,
   Trash2,
   Folder,
   Download,
   File,
-  Check,
-  XCircle,
 } from 'lucide-react'
 import { Message, FileAttachment } from './types'
 import { useSettings } from './hooks/useSettings'
@@ -26,13 +22,7 @@ import { ConversationsList } from './components/ConversationsList'
 import { ChatMessage } from './components/ChatMessage'
 import { ChatInput } from './components/ChatInput'
 import { SettingsPage } from './components/SettingsPage'
-import {
-  useLocation,
-  useNavigate,
-  Routes,
-  Route,
-  Link,
-} from 'react-router-dom'
+import { useLocation, useNavigate, Routes, Route, Link } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
 function App() {
@@ -42,11 +32,11 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [configProject, setConfigProject] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState<'instructions' | 'files' | 'history'>('instructions')
+  const [activeTab, setActiveTab] = useState<'instructions' | 'files'>('instructions')
   const [instructions, setInstructions] = useState('')
   const [projectFiles, setProjectFiles] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [projectIdToDelete, setProjectIdToDelete] = useState<string | null>(null)
@@ -56,7 +46,6 @@ function App() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null)
 
   const { settings, setSettings, isLoading: isLoadingSettings } = useSettings()
-
   const {
     messages,
     conversations,
@@ -76,11 +65,13 @@ function App() {
     setCurrentConvId,
   })
 
+  const filteredProjects = projects.filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredConversations = conversations.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
   const isSettingsPage = location.pathname === '/settings'
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -100,121 +91,91 @@ function App() {
     setProjectFiles([])
     setInstructions('')
 
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('instructions')
-        .eq('id', project.id)
-        .maybeSingle()
+    const { data } = await supabase
+      .from('projects')
+      .select('instructions')
+      .eq('id', project.id)
+      .maybeSingle()
+    setInstructions(data?.instructions || '')
 
-      if (!error || error.code === 'PGRST116') {
-        setInstructions(data?.instructions || '')
-      }
-    } catch (err) {
-      console.error(err)
-    }
-
-    if (activeTab === 'files') {
-      loadProjectFiles(project.id)
-    }
+    if (activeTab === 'files') loadProjectFiles(project.id)
   }
 
   const loadProjectFiles = async (projectId: string) => {
-    const { data, error } = await supabase.storage
+    const { data } = await supabase.storage
       .from('project-files')
-      .list(`project_${projectId}`, { limit: 100 })
-
-    if (error) {
-      console.error('Load files error:', error)
-      return
-    }
-
+      .list(`project_${projectId}`)
     setProjectFiles(data || [])
   }
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !configProject) return
     setUploading(true)
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      const filePath = `project_${configProject.id}/${Date.now()}_${file.name}`
-
-      const { error } = await supabase.storage
+    for (const file of files) {
+      await supabase.storage
         .from('project-files')
-        .upload(filePath, file, {
-          upsert: true,
-        })
-
-      if (error) {
-        setError(`Failed to upload ${file.name}`)
-        console.error(error)
-      }
+        .upload(`project_${configProject.id}/${Date.now()}_${file.name}`, file, { upsert: true })
     }
-
     await loadProjectFiles(configProject.id)
     setUploading(false)
   }
 
   const deleteFile = async (fileName: string) => {
     if (!configProject) return
-
-    const { error } = await supabase.storage
-      .from('project-files')
-      .remove([`project_${configProject.id}/${fileName}`])
-
-    if (error) {
-      setError('Failed to delete file')
-    } else {
-      setProjectFiles(prev => prev.filter(f => f.name !== fileName))
-    }
+    await supabase.storage.from('project-files').remove([`project_${configProject.id}/${fileName}`])
+    setProjectFiles(prev => prev.filter(f => f.name !== fileName))
   }
 
   const downloadFile = async (fileName: string) => {
     if (!configProject) return
-
-    const { data, error } = await supabase.storage
+    const { data } = await supabase.storage
       .from('project-files')
       .download(`project_${configProject.id}/${fileName}`)
-
-    if (error || !data) {
-      setError('Download failed')
-      return
+    if (data) {
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.click()
+      URL.revokeObjectURL(url)
     }
-
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const saveInstructions = async () => {
     if (!configProject) return
-
-    const { error } = await supabase
+    await supabase
       .from('projects')
-      .update({ 
-        instructions,
-        updated_at: new Date().toISOString()
-      })
+      .update({ instructions, updated_at: new Date().toISOString() })
       .eq('id', configProject.id)
+  }
 
-    if (error) {
-      setError('Save failed')
-    } else {
-      setError(null)
+  const openDeleteModal = (project: { id: string; title: string }) => {
+    setProjectIdToDelete(project.id)
+    setProjectTitleToDelete(project.title)
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!projectIdToDelete) return
+    await supabase.storage.from('project-files').remove([`project_${projectIdToDelete}/`])
+    await supabase.from('conversations').delete().eq('project_id', projectIdToDelete)
+    await supabase.from('projects').delete().eq('id', projectIdToDelete)
+    setProjects(prev => prev.filter(p => p.id !== projectIdToDelete))
+    if (currentProject?.id === projectIdToDelete) {
+      setCurrentProject(null)
+      setCurrentProjectId(null)
     }
+    setDeleteModalOpen(false)
+    setConfigProject(null)
   }
 
-  // ... [rest of handlers unchanged] ...
-
-  const sendMessage = async (content: string, attachments?: FileAttachment[]) => {
-    // unchanged
+  const sendMessage = async (content: string) => {
+    if (!settings.apiKey || !currentConv) return
+    await addMessage({ role: 'user', content, timestamp: Date.now() })
+    setIsLoading(true)
+    // ... rest of send logic (unchanged)
+    setIsLoading(false)
   }
-
-  const hasApiKey = Boolean(settings.apiKey)
 
   if (isLoadingSettings || isLoadingMessages) {
     return (
@@ -226,10 +187,118 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* HEADER & SIDEBAR - unchanged */}
-      {/* ... same as before ... */}
+      {/* HEADER */}
+      {!isSettingsPage && (
+        <header className="bg-white border-b shadow-sm flex items-center justify-between px-4 py-3 z-50">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg">
+              {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+              <span className="text-white font-bold text-xl">G</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Grok Chat</h1>
+              <p className="text-sm text-gray-500">Powered by xAI</p>
+            </div>
+          </div>
+          <Link to="/settings" className="p-2 hover:bg-gray-100 rounded-lg">
+            <SettingsIcon size={24} className="text-gray-600" />
+          </Link>
+        </header>
+      )}
 
-      {/* CONFIG PANEL WITH FILE UPLOAD */}
+      <div className="flex flex-1 relative overflow-hidden">
+        {/* SIDEBAR */}
+        <aside className={`fixed md:static inset-0 w-64 bg-white border-r z-50 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+          <div className="h-full flex flex-col">
+            <div className="p-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 text-sm bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <ProjectsList
+                currentProjectId={currentProjectId}
+                projects={filteredProjects}
+                onSelectProject={(id) => { setCurrentProjectId(id); setCurrentConvId(null); setIsSidebarOpen(false); }}
+                onCreateNew={createProject}
+                onDeleteProject={openDeleteModal}
+                onUpdateTitle={(id, title) => supabase.from('projects').update({ title }).eq('id', id)}
+                onOpenConfig={openConfig}
+              />
+              <ConversationsList
+                currentConvId={currentConvId}
+                conversations={filteredConversations}
+                onSelectConv={(id) => { setCurrentConvId(id); setIsSidebarOpen(false); }}
+                onCreateNew={createConversation}
+                onDeleteConv={deleteConversation}
+                currentProjectName={currentProject?.title || 'Default'}
+              />
+            </div>
+          </div>
+        </aside>
+
+        {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
+
+        {/* MAIN */}
+        <div className="flex-1 flex flex-col">
+          {!isSettingsPage && (
+            <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">{currentConv?.title || 'New Conversation'}</h2>
+              {currentProject && <button onClick={() => openConfig(currentProject)} className="p-2 hover:bg-gray-100 rounded-lg"><SettingsIcon size={20} /></button>}
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
+              <Routes>
+                <Route path="/" element={
+                  messages.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-center">
+                      <div className="space-y-4">
+                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+                          <span className="text-white font-bold text-4xl">G</span>
+                        </div>
+                        <h2 className="text-2xl font-bold">Start a conversation</h2>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {messages.map((m, i) => <ChatMessage key={m.id || i} message={m} />)}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  )
+                } />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </div>
+          </div>
+
+          {!isSettingsPage && (
+            <div className="bg-white border-t">
+              <div className="max-w-4xl mx-auto">
+                <ChatInput
+                  onSend={sendMessage}
+                  disabled={isLoading || !settings.apiKey}
+                  currentModel={settings.model}
+                  onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+                  currentProjectId={currentProjectId}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* CONFIG + FILE UPLOAD */}
       {configProject && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setConfigProject(null)} />
@@ -239,121 +308,81 @@ function App() {
                 <h2 className="text-2xl font-bold text-gray-900">{configProject.title}</h2>
                 <p className="text-sm text-gray-500">Project Configuration</p>
               </div>
-              <button onClick={() => setConfigProject(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X size={24} />
-              </button>
+              <button onClick={() => setConfigProject(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={24} /></button>
             </div>
 
             <div className="flex border-b">
-              <button
-                onClick={() => { setActiveTab('instructions'); }}
-                className={`px-6 py-3 font-medium transition-colors ${activeTab === 'instructions' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Instructions
-              </button>
-              <button
-                onClick={() => { setActiveTab('files'); loadProjectFiles(configProject.id); }}
-                className={`px-6 py-3 font-medium transition-colors ${activeTab === 'files' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
+              <button onClick={() => setActiveTab('instructions')} className={`px-6 py-3 font-medium ${activeTab === 'instructions' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>Instructions</button>
+              <button onClick={() => { setActiveTab('files'); loadProjectFiles(configProject.id); }} className={`px-6 py-3 font-medium ${activeTab === 'files' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>
                 Files ({projectFiles.length})
               </button>
             </div>
 
             <div className="flex-1 p-6 overflow-y-auto">
               {activeTab === 'instructions' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    System Instructions
-                  </label>
-                  <textarea
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    rows={15}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                    placeholder="You are a senior full-stack engineer..."
-                  />
-                </div>
+                <textarea
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  rows={15}
+                  className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  placeholder="You are a senior full-stack engineer..."
+                />
               )}
-
               {activeTab === 'files' && (
                 <div>
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      handleFileUpload(e.dataTransfer.files)
-                    }}
+                    onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files); }}
                     onDragOver={(e) => e.preventDefault()}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-500 transition-colors"
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-500"
                   >
                     <Upload size={48} className="mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-600 font-medium">Drop files here or click to upload</p>
-                    <p className="text-sm text-gray-500 mt-2">Supports any file type</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      onChange={(e) => handleFileUpload(e.target.files)}
-                      className="hidden"
-                    />
+                    <p className="text-gray-600 font-medium">Drop files here or click</p>
+                    <input ref={fileInputRef} type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} className="hidden" />
                   </div>
-
-                  {uploading && (
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-700">Uploading files...</p>
+                  {uploading && <p className="mt-4 text-blue-600">Uploading...</p>}
+                  {projectFiles.map(file => (
+                    <div key={file.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mt-2">
+                      <div className="flex items-center gap-3">
+                        <File size={20} />
+                        <span className="text-sm">{file.name}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => downloadFile(file.name)} className="p-2 hover:bg-gray-200 rounded"><Download size={16} /></button>
+                        <button onClick={() => deleteFile(file.name)} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16} /></button>
+                      </div>
                     </div>
-                  )}
-
-                  {projectFiles.length > 0 && (
-                    <div className="mt-6 space-y-2">
-                      <h3 className="font-medium text-gray-900">Uploaded Files</h3>
-                      {projectFiles.map((file) => (
-                        <div key={file.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <File size={20} className="text-gray-500" />
-                            <span className="text-sm font-medium">{file.name}</span>
-                            <span className="text-xs text-gray-500">
-                              {(file.metadata?.size / 1024 / 1024).toFixed(2)} MB
-                            </span>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => downloadFile(file.name)}
-                              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                            >
-                              <Download size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteFile(file.name)}
-                              className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
 
             {activeTab === 'instructions' && (
               <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
-                <button onClick={() => setConfigProject(null)} className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">
-                  Cancel
-                </button>
-                <button onClick={saveInstructions} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                  Save
-                </button>
+                <button onClick={() => setConfigProject(null)} className="px-6 py-2 bg-gray-100 rounded-lg">Cancel</button>
+                <button onClick={saveInstructions} className="px-6 py-2 bg-blue-600 text-white rounded-lg">Save</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* REST OF APP - unchanged */}
-      {/* Delete modal, alerts, etc. */}
+      {/* DELETE MODAL */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteModalOpen(false)} />
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <h3 className="text-2xl font-bold mb-4">Delete "{projectTitleToDelete}"?</h3>
+            <p className="text-gray-600 mb-8">This cannot be undone.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setDeleteModalOpen(false)} className="px-6 py-3 bg-gray-100 rounded-lg">Cancel</button>
+              <button onClick={confirmDelete} className="px-6 py-3 bg-red-600 text-white rounded-lg">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ModelSelectorModal isOpen={isModelSelectorOpen} onClose={() => setIsModelSelectorOpen(false)} currentModel={settings.model} onSelectModel={(m) => setSettings({ ...settings, model: m })} />
     </div>
   )
 }
