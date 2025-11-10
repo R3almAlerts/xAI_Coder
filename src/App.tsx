@@ -42,7 +42,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<'instructions' | 'files' | 'history'>('instructions')
   const [instructions, setInstructions] = useState('')
 
-  // DELETE MODAL STATE – SAFE
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<any>(null)
 
@@ -154,7 +153,6 @@ function App() {
     const projectId = projectToDelete.id
 
     try {
-      // 1. Delete files
       const { data: files } = await supabase.storage
         .from('project-files')
         .list(`project_${projectId}`)
@@ -164,7 +162,6 @@ function App() {
         await supabase.storage.from('project-files').remove(filePaths)
       }
 
-      // 2. Delete conversations
       const { data: convs } = await supabase
         .from('conversations')
         .select('id')
@@ -174,7 +171,6 @@ function App() {
         await supabase.from('conversations').delete().in('id', convs.map(c => c.id))
       }
 
-      // 3. Delete project
       const { error: deleteError } = await supabase
         .from('projects')
         .delete()
@@ -182,7 +178,6 @@ function App() {
 
       if (deleteError) throw deleteError
 
-      // 4. Update UI
       setProjects(prev => prev.filter(p => p.id !== projectId))
       if (currentProject?.id === projectId) {
         setCurrentProject(null)
@@ -323,7 +318,7 @@ function App() {
         </header>
       )}
 
-      {/* MAIN LAYOUT – FIXED: All divs properly closed */}
+      {/* MAIN LAYOUT */}
       <div className="flex flex-1 relative overflow-hidden">
         {/* SIDEBAR */}
         <aside className={`
@@ -377,7 +372,7 @@ function App() {
           />
         )}
 
-        {/* MAIN CONTENT – NOW VISIBLE AGAIN */}
+        {/* MAIN CONTENT */}
         <div className="flex-1 flex flex-col relative">
           {/* Chat header */}
           {!isSettingsPage && (
@@ -407,3 +402,155 @@ function App() {
                       <div className="h-full flex items-center justify-center text-center">
                         <div className="space-y-4">
                           <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
+                            <span className="text-white font-bold text-4xl">G</span>
+                          </div>
+                          <h2 className="text-2xl font-bold">Start a conversation</h2>
+                          <p className="text-gray-500">Ask me anything!</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {messages.map((m, i) => (
+                          <ChatMessage key={m.id || i} message={m} />
+                        ))}
+                        {isLoading && (
+                          <div className="flex gap-3">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                              <Loader2 className="w-5 h-5 text-white animate-spin" />
+                            </div>
+                            <div className="bg-gray-100 rounded-2xl px-4 py-3">
+                              <div className="flex gap-1">
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
+                                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    )
+                  }
+                />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </div>
+          </div>
+
+          {/* INPUT */}
+          {!isSettingsPage && (
+            <div className="bg-white border-t">
+              <div className="max-w-4xl mx-auto">
+                <ChatInput
+                  onSend={sendMessage}
+                  disabled={isLoading || !hasApiKey}
+                  currentModel={settings.model}
+                  onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+                  currentProjectId={currentProjectId}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* CONFIG PANEL */}
+      {configProject && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setConfigProject(null)} />
+          <div className="relative w-full max-w-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{configProject.title}</h2>
+                <p className="text-sm text-gray-500">Project Configuration</p>
+              </div>
+              <button onClick={() => setConfigProject(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={24} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {deleteModalOpen && projectToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteModalOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 animate-in fade-in zoom-in-95">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={32} className="text-red-600" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                Permanently delete "{projectToDelete.title}"?
+              </h3>
+              <p className="text-gray-600 mb-8">
+                This will delete:
+                <br />
+                <strong>• The project</strong>
+                <br />
+                <strong>• All conversations</strong>
+                <br />
+                <strong>• All uploaded files</strong>
+                <br />
+                <br />
+                This action <strong>cannot be undone</strong>.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => {
+                    setDeleteModalOpen(false)
+                    setProjectToDelete(null)
+                  }}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                >
+                  Delete Everything
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ALERTS */}
+      {!isSettingsPage && !hasApiKey && (
+        <div className="fixed bottom-24 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
+          <div className="flex items-center gap-3 text-yellow-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">Add your API key in Settings to start chatting</p>
+            <button onClick={() => navigate('/settings')} className="ml-auto underline text-sm font-medium">
+              Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isSettingsPage && error && (
+        <div className="fixed bottom-24 left-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 z-50 shadow-lg">
+          <div className="flex items-center gap-3 text-red-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-sm font-medium">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ModelSelectorModal
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        currentModel={settings.model}
+        onSelectModel={model => setSettings({ ...settings, model })}
+      />
+    </div>
+  )
+}
+
+export default App
