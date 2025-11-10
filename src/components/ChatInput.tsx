@@ -1,23 +1,19 @@
-import { Send, Cpu, Paperclip, X, Folder } from 'lucide-react';
+import { Send, Cpu, Paperclip, X } from 'lucide-react';
 import { useState, KeyboardEvent } from 'react';
 import { FileAttachment } from '../types';
-import { FolderUploadModal } from './FolderUploadModal';
-import { getUserId, uploadFile } from '../lib/supabase';
-import { uploadFile } from '../lib/supabase'
+import { uploadFile as supabaseUploadFile } from '../lib/supabase'; // ← Renamed to avoid conflict
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: FileAttachment[]) => void;
   disabled: boolean;
   currentModel: string;
   onOpenModelSelector: () => void;
-  currentProjectId?: string; // New: for project-scoped uploads
 }
 
-export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector, currentProjectId }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
-  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const getModelDisplayName = (model: string) => {
     if (model === 'auto') return 'Auto';
@@ -30,63 +26,55 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector,
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    
     await processFiles(files);
-    
-    // Reset input
     e.target.value = '';
   };
 
-  const handleFolderSelect = () => {
-    setIsFolderModalOpen(true);
-  };
-
-  const handleFolderConfirm = (processedFiles: FileAttachment[]) => {
-    setAttachments(prev => [...prev, ...processedFiles]);
-    setIsFolderModalOpen(false);
+  const handleDirectorySelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    await processFiles(files);
+    e.target.value = '';
   };
 
   const processFiles = async (files: File[]) => {
+    setIsUploading(true);
+    const newAttachments: FileAttachment[] = [];
+
     for (const file of files) {
-      // Check file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+        alert(`File "${file.name}" is too large. Max 10MB.`);
         continue;
       }
 
-      // Skip hidden files and system files
       if (file.name.startsWith('.') || file.name.startsWith('~')) {
         continue;
       }
 
       try {
-        // Upload to Supabase storage
-        const userId = await getUserId();
-        if (!userId) {
-          alert('User not authenticated. Please refresh.');
-          continue;
-        }
+        // Upload to Supabase Storage
+        const { data, error } = await supabaseUploadFile(file);
+        if (error) throw error;
 
-        const url = await uploadFile(file, userId, currentProjectId);
-        if (!url) {
-          alert(`Failed to upload "${file.name}".`);
-          continue;
-        }
+        const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/chat-attachments/${data.path}`;
 
-        const attachment: FileAttachment = {
+        const content = await fileToBase64(file);
+
+        newAttachments.push({
           id: crypto.randomUUID(),
           name: file.name,
           size: file.size,
           type: file.type,
-          url, // Use URL from storage
-        };
-        
-        setAttachments(prev => [...prev, attachment]);
+          content,
+          url: publicUrl, // Optional: include public URL
+        });
       } catch (error) {
-        console.error('Error uploading file:', error);
-        alert(`Failed to upload "${file.name}".`);
+        console.error('Upload failed:', error);
+        alert(`Failed to upload "${file.name}"`);
       }
     }
+
+    setAttachments(prev => [...prev, ...newAttachments]);
+    setIsUploading(false);
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -94,9 +82,7 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector,
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove data URL prefix to get just the base64 content
-        const base64 = result.split(',')[1];
-        resolve(base64);
+        resolve(result.split(',')[1]);
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
@@ -117,7 +103,7 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((input.trim() || attachments.length > 0) && !disabled) {
+    if ((input.trim() || attachments.length > 0) && !disabled && !isUploading) {
       onSend(input.trim(), attachments.length > 0 ? attachments : undefined);
       setInput('');
       setAttachments([]);
@@ -131,159 +117,118 @@ export function ChatInput({ onSend, disabled, currentModel, onOpenModelSelector,
     }
   };
 
-  // Drag and Drop handlers
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      processFiles(files);
-    }
-  };
-
   return (
-    <>
-      <form onSubmit={handleSubmit} className="border-t bg-white p-4">
-        <div className="max-w-4xl mx-auto">
-          {/* Attachments Preview */}
-          {attachments.length > 0 && (
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-500 font-medium">
-                  {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
-                </p>
+    <form onSubmit={handleSubmit} className="border-t bg-white p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Upload Status */}
+        {isUploading && (
+          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+            Uploading files...
+          </div>
+        )}
+
+        {/* Attachments Preview */}
+        {attachments.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600 font-medium">
+                {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
+              </p>
+              <button
+                type="button"
+                onClick={() => setAttachments([])}
+                className="text-sm text-red-600 hover:text-red-700 font-medium"
+                disabled={isUploading}
+              >
+                Clear all
+              </button>
+            </div>
+            {attachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
+              >
+                <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {attachment.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatFileSize(attachment.size)} • {attachment.type || 'Unknown'}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setAttachments([])}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                  onClick={() => removeAttachment(attachment.id)}
+                  className="p-1 hover:bg-gray-200 rounded transition-colors"
+                  disabled={isUploading}
                 >
-                  Clear all
+                  <X size={16} className="text-gray-500" />
                 </button>
               </div>
-              <div className="max-h-48 overflow-y-auto space-y-2">
-                {attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
-                  >
-                    <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {attachment.name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(attachment.size)} • {attachment.type || 'Unknown type'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      className="p-1 hover:bg-gray-200 rounded transition-colors"
-                      aria-label="Remove attachment"
-                    >
-                      <X size={16} className="text-gray-500" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 mb-3">
-            <button
-              type="button"
-              onClick={onOpenModelSelector}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
-              disabled={disabled}
-            >
-              <Cpu size={16} />
-              <span>{getModelDisplayName(currentModel)}</span>
-            </button>
-            
-            <label className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer">
-              <Paperclip size={16} />
-              <span>Attach</span>
-              <input
-                type="file"
-                multiple
-                onChange={handleFileSelect}
-                disabled={disabled}
-                className="hidden"
-                accept="*/*"
-              />
-            </label>
-            
-            <button
-              type="button"
-              onClick={handleFolderSelect}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
-              disabled={disabled}
-            >
-              <Folder size={16} />
-              <span>Folder</span>
-            </button>
+            ))}
           </div>
+        )}
+
+        <div className="flex gap-3 mb-3">
+          <button
+            type="button"
+            onClick={onOpenModelSelector}
+            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+            disabled={disabled || isUploading}
+          >
+            <Cpu size={16} />
+            <span>{getModelDisplayName(currentModel)}</span>
+          </button>
           
-          <div className="flex gap-3">
-            <div
-              className={`relative flex-1 min-h-[52px] rounded-lg border-2 border-dashed border-gray-300 ${isDragOver ? 'border-blue-500 bg-blue-50' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isDragOver ? 'Drop files or folders here...' : 'Type your message... (Shift + Enter for new line)'}
-                disabled={disabled}
-                rows={1}
-                className="flex-1 px-4 py-3 border-0 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none disabled:bg-gray-100 disabled:cursor-not-allowed transition-all w-full h-full bg-transparent"
-                style={{ minHeight: '52px', maxHeight: '200px' }}
-                onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = '52px';
-                  target.style.height = target.scrollHeight + 'px';
-                }}
-              />
-              {isDragOver && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-blue-50/80 rounded-lg">
-                  <Paperclip size={24} className="text-blue-600 mr-2" />
-                  <span className="text-blue-600 font-medium">Drop files or folders to attach</span>
-                </div>
-              )}
-            </div>
-            <button
-              type="submit"
-              disabled={disabled || (!input.trim() && attachments.length === 0)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium"
-            >
-              <Send size={20} />
-              <span className="hidden sm:inline">Send</span>
-            </button>
-          </div>
+          <label className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer">
+            <Paperclip size={16} />
+            <span>Attach Files</span>
+            <input
+              type="file"
+              multiple
+              onChange={handleFileSelect}
+              disabled={disabled || isUploading}
+              className="hidden"
+              accept="*/*"
+            />
+          </label>
+          
+          <label className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer">
+            <Paperclip size={16} />
+            <span>Folder</span>
+            <input
+              type="file"
+              webkitdirectory=""
+              directory=""
+              multiple
+              onChange={handleDirectorySelect}
+              disabled={disabled || isUploading}
+              className="hidden"
+            />
+          </label>
         </div>
-      </form>
-
-      <FolderUploadModal
-        isOpen={isFolderModalOpen}
-        onClose={() => setIsFolderModalOpen(false)}
-        onConfirm={handleFolderConfirm}
-      />
-    </>
-  );
-}
+        
+        <div className="flex gap-3">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message... (Shift + Enter for new line)"
+            disabled={disabled || isUploading}
+            rows={1}
+            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+            style={{ minHeight: '52px', maxHeight: '200px' }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = '52px';
+              target.style.height = target.scrollHeight + 'px';
+            }}
+          />
+          <button
+            type="submit"
+            disabled={disabled || isUploading || (!input.trim() && attachments.length === 0)}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium"
+          >
+            {isUploading ? (
+              <Loader2 size={20} className="animate-spin"
