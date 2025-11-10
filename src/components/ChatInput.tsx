@@ -3,6 +3,7 @@ import { useState, KeyboardEvent } from 'react';
 import { FileAttachment } from '../types';
 import { FolderUploadModal } from './FolderUploadModal';
 import { getUserId, uploadFile } from '../lib/supabase';
+import { uploadFile } from '../lib/supabase'
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: FileAttachment[]) => void;

@@ -18,7 +18,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
-// Helper for user ID (fixes import errors)
+// CRITICAL: Export uploadFile function
+export const uploadFile = async (file: File, path: string) => {
+  const { data, error } = await supabase.storage
+    .from('project-files')
+    .upload(path, file, { upsert: true })
+
+  if (error) throw error
+  return data
+}
+
+// Also export getUserId for other hooks
 export const getUserId = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   return user?.id || 'anonymous'
