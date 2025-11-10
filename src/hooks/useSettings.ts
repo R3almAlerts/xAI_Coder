@@ -9,64 +9,47 @@ interface Settings {
   logoUrl: string
 }
 
-interface SettingsStore extends Settings {
+export const useSettings = create<{
+  settings: Settings
   isLoading: boolean
-  setSettings: (settings: Partial<Settings>) => Promise<void>
-}
-
-export const useSettings = create<SettingsStore>((set, get) => ({
-  apiKey: '',
-  baseUrl: 'https://api.x.ai',
-  model: 'auto',
-  logoUrl: '',
+  setSettings: (s: Partial<Settings>) => Promise<void>
+}>((set) => ({
+  settings: {
+    apiKey: '',
+    baseUrl: 'https://api.x.ai',
+    model: 'auto',
+    logoUrl: ''
+  },
   isLoading: true,
 
   setSettings: async (newSettings) => {
-    const current = get()
-    const updated = { ...current, ...newSettings }
+    const updated = { ...useSettings.getState().settings, ...newSettings }
+    set({ settings: updated })
 
-    const { error } = await supabase
+    await supabase
       .from('settings')
-      .upsert({
-        id: 'global',
-        ...updated,
-      })
-
-    if (!error) {
-      set({ ...updated })
-    }
+      .upsert({ id: 'global', ...updated })
   },
 
-  // AUTO-LOAD ON START
   init: async () => {
-    set({ isLoading: true })
-    const { data, error } = await supabase
-      .from('settings')
-      .select('*')
-      .eq('id', 'global')
-      .single()
+    try {
+      const { data } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', 'global')
+        .single()
 
-    if (data) {
-      set({
-        apiKey: data.apiKey || '',
-        baseUrl: data.baseUrl || 'https://api.x.ai',
-        model: data.model || 'auto',
-        logoUrl: data.logoUrl || '',
-        isLoading: false,
-      })
-    } else {
-      // Create default row if none exists
-      await supabase.from('settings').insert({
-        id: 'global',
-        apiKey: '',
-        baseUrl: 'https://api.x.ai',
-        model: 'auto',
-        logoUrl: '',
-      })
+      if (data) {
+        set({ settings: data, isLoading: false })
+      } else {
+        set({ isLoading: false })
+      }
+    } catch (err) {
+      console.error('Settings load failed:', err)
       set({ isLoading: false })
     }
-  },
+  }
 }))
 
-// CRITICAL: INIT ON LOAD
+// Auto-init
 useSettings.getState().init()

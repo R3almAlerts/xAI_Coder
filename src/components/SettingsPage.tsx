@@ -1,36 +1,53 @@
 // src/components/SettingsPage.tsx
 import React, { useState, useRef } from 'react'
-import { Upload, X, Check, Loader2 } from 'lucide-react'
+import { Upload, X, Check, Loader2, Save } from 'lucide-react'
 import { useSettings } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
 
 export const SettingsPage = () => {
-  const { settings, setSettings, isLoading } = useSettings()
-  const [apiKey, setApiKey] = useState(settings.apiKey || '')
-  const [baseUrl, setBaseUrl] = useState(settings.baseUrl || 'https://api.x.ai')
-  const [model, setModel] = useState(settings.model || 'auto')
-  const [logoUrl, setLogoUrl] = useState(settings.logoUrl || '')
-  const [uploading, setUploading] = useState(false)
+  const { settings, isLoading: storeLoading } = useSettings()
+  const [isSaving, setIsSaving] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Default fallback values
+  const {
+    apiKey = '',
+    baseUrl = 'https://api.x.ai',
+    model = 'auto',
+    logoUrl = ''
+  } = settings || {}
+
+  const [localApiKey, setLocalApiKey] = useState(apiKey)
+  const [localBaseUrl, setLocalBaseUrl] = useState(baseUrl)
+  const [localModel, setLocalModel] = useState(model)
+  const [localLogoUrl, setLocalLogoUrl] = useState(logoUrl)
+
   const handleSave = async () => {
-    await setSettings({
-      apiKey,
-      baseUrl,
-      model,
-      logoUrl,
-    })
+    setIsSaving(true)
+    try {
+      await useSettings.getState().setSettings({
+        apiKey: localApiKey,
+        baseUrl: localBaseUrl,
+        model: localModel,
+        logoUrl: localLogoUrl
+      })
+      setUploadSuccess(true)
+      setTimeout(() => setUploadSuccess(false), 3000)
+    } catch (err) {
+      alert('Failed to save settings')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleLogoUpload = async (file: File) => {
     if (!file) return
-
     setUploading(true)
-    setUploadSuccess(false)
 
     try {
-      const fileExt = file.name.split('.').pop()
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png'
       const fileName = `logo.${fileExt}`
       const filePath = `public/${fileName}`
 
@@ -44,8 +61,7 @@ export const SettingsPage = () => {
         .from('app-assets')
         .getPublicUrl(filePath)
 
-      const publicUrl = data.publicUrl
-      setLogoUrl(publicUrl)
+      setLocalLogoUrl(data.publicUrl)
       setUploadSuccess(true)
       setTimeout(() => setUploadSuccess(false), 3000)
     } catch (err) {
@@ -57,59 +73,65 @@ export const SettingsPage = () => {
   }
 
   const removeLogo = () => {
-    setLogoUrl('')
-    setUploadSuccess(false)
+    setLocalLogoUrl('')
   }
 
-  if (isLoading) {
+  if (storeLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
+    <div className="max-w-5xl mx-auto p-8">
+      <div className="mb-10">
+        <h1 className="text-4xl font-bold text-gray-900">Settings</h1>
+        <p className="text-gray-600 mt-2">Configure Code Guru for your workflow</p>
+      </div>
 
       <div className="space-y-8">
-        {/* API Settings */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
-          <div className="space-y-4">
+
+        {/* API Configuration */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">xAI API Configuration</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                xAI API Key
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                API Key
               </label>
               <input
                 type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                value={localApiKey}
+                onChange={(e) => setLocalApiKey(e.target.value)}
                 placeholder="sk-..."
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition"
               />
+              <p className="text-xs text-gray-500 mt-2">Get your key at <a href="https://x.ai/api" target="_blank" className="text-indigo-600 hover:underline">x.ai/api</a></p>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Base URL
               </label>
               <input
                 type="text"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                value={localBaseUrl}
+                onChange={(e) => setLocalBaseUrl(e.target.value)}
                 placeholder="https://api.x.ai"
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500"
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Model
               </label>
               <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"
+                value={localModel}
+                onChange={(e) => setLocalModel(e.target.value)}
+                className="w-full px-5 py-3 border border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500"
               >
                 <option value="auto">Auto (grok-2-latest)</option>
                 <option value="grok-2-latest">grok-2-latest</option>
@@ -120,74 +142,91 @@ export const SettingsPage = () => {
         </div>
 
         {/* Logo Upload */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Application Logo</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-6">
-              <div className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Application Logo</h2>
+          
+          <div className="flex flex-col md:flex-row gap-10 items-start">
+            <div className="flex-shrink-0">
+              <div className="w-32 h-32 rounded-2xl border-4 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50 shadow-inner">
+                {localLogoUrl ? (
+                  <img src={localLogoUrl} alt="Your Logo" className="w-full h-full object-contain" />
                 ) : (
-                  <span className="text-4xl font-bold text-gray-400">CG</span>
+                  <div className="text-5xl font-bold text-gray-400">CG</div>
                 )}
               </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-600 mb-3">
-                  Upload a custom logo for Code Guru (recommended: 512x512 PNG)
-                </p>
-                <div className="flex gap-3">
+            </div>
+
+            <div className="flex-1 space-y-4">
+              <p className="text-gray-600">
+                Upload your company logo. Recommended: 512×512 PNG with transparent background.
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-3 font-medium transition"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={20} />
+                      Choose Image
+                    </>
+                  )}
+                </button>
+
+                {localLogoUrl && (
                   <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                    onClick={removeLogo}
+                    className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 flex items-center gap-3 font-medium transition"
                   >
-                    {uploading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload size={16} />
-                        Choose File
-                      </>
-                    )}
+                    <X size={20} />
+                    Remove Logo
                   </button>
-                  {logoUrl && (
-                    <button
-                      onClick={removeLogo}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
-                    >
-                      <X size={16} />
-                      Remove
-                    </button>
-                  )}
-                  {uploadSuccess && (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <Check size={16} />
-                      <span>Logo uploaded!</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])}
-                  className="hidden"
-                />
+                )}
+
+                {uploadSuccess && (
+                  <div className="px-6 py-3 bg-green-100 text-green-800 rounded-xl flex items-center gap-3">
+                    <Check size={20} />
+                    Saved!
+                  </div>
+                )}
               </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])}
+                className="hidden"
+              />
             </div>
           </div>
         </div>
 
         {/* Save Button */}
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-6">
           <button
             onClick={handleSave}
-            className="px-8 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+            disabled={isSaving}
+            className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-lg hover:shadow-2xl transform hover:scale-105 transition flex items-center gap-3"
           >
-            Save Settings
+            {isSaving ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={24} />
+                Save All Settings
+              </>
+            )}
           </button>
         </div>
       </div>
