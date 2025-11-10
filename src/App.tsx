@@ -510,7 +510,39 @@ function App() {
         )}
       </div>
 
-      {/* ALERTS */}
+      {/* ALERTS - FIXED: added missing quote */}
       {!isSettingsPage && !hasApiKey && (
         <div className="fixed bottom-24 left-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 z-50 shadow-lg">
-          <div className
+          <div className="flex items-center gap-3 text-yellow-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">Add your API key in Settings to start chatting</p>
+            <button onClick={() => navigate('/settings')} className="ml-auto underline text-sm font-medium">
+              Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isSettingsPage && error && (
+        <div className="fixed bottom-24 left-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 z-50 shadow-lg">
+          <div className="flex items-center gap-3 text-red-800">
+            <AlertCircle size={20} />
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto text-sm font-medium">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ModelSelectorModal
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        currentModel={settings.model}
+        onSelectModel={model => setSettings({ ...settings, model })}
+      />
+    </div>
+  )
+}
+
+export default App
