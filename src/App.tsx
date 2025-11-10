@@ -244,17 +244,16 @@ function App() {
 
       {/* MAIN LAYOUT */}
       <div className="flex flex-1 relative overflow-hidden">
-        {/* SIDEBAR */}
+        {/* SIDEBAR – NO .pt-16 ANYWHERE */}
         <aside
           className={`
-            fixed md:static top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200
+            fixed md:static inset-0 w-64 bg-white border-r border-gray-200
             z-50 transform transition-transform duration-300 ease-in-out
             ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-            ${!isSettingsPage ? 'pt-16' : 'pt-0'}
           `}
         >
           <div className="h-full flex flex-col">
-            {/* SEARCH BAR – ZERO TOP PADDING */}
+            {/* SEARCH BAR – FLUSH WITH TOP */}
             <div className="px-3 pt-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
