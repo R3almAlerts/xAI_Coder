@@ -220,7 +220,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     }
   }
 
-  const addMessage = async (message: Omit<Conversation, 'id'>) => {
+  const addMessage = async (message: Omit<Message, 'id'>) => {
     const userId = userIdRef.current
     if (!userId) {
       throw new Error('User ID not available. Please refresh.')
@@ -250,7 +250,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
     }
 
     // Add to local state with DB-generated ID
-    const fullMessage: Conversation = { ...message, id: data.id }
+    const fullMessage: Message = { ...message, id: data.id }
     setMessages((prev) => [...prev, fullMessage])
 
     // Update conversation timestamp
@@ -260,7 +260,7 @@ export function useMessages(currentConvId?: string, currentProjectId?: string) {
       .eq('id', currentConv.id)
 
     // Refresh conversations list for updated_at
-    await loadConversations(currentProject ? currentProject.id : undefined)
+    await loadConversations(currentProject ? currentProject.id : null)
   }
 
   useEffect(() => {
