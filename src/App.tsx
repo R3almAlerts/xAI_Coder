@@ -38,7 +38,7 @@ export function App() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentProjectName, setCurrentProjectName] = useState('');
   const [files, setFiles] = useState<FileNode[]>([]);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
@@ -47,7 +47,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
-  // Load files from Supabase
+  // Load files from Supabase — FIXED: Keep .keep files for folder detection!
   const loadFiles = async () => {
     if (!currentProjectId) {
       setFiles([]);
@@ -67,25 +67,25 @@ export function App() {
     const root: FileNode[] = [];
     const map = new Map<string, FileNode>();
 
-    (data || [])
-      .filter(item => item.name && !item.name.endsWith('/.keep'))
-      .forEach(item => {
-        const parts = item.name.split('/');
-        let currentPath = '';
-        let parent: FileNode[] = root;
+    (data || []).forEach(item => {
+      // Skip only null/empty names
+      if (!item.name) return;
 
-        parts.forEach((part, i) => {
-          if (!part) return;
-          currentPath += (currentPath ? '/' : '') + part;
+      // Include .keep files to detect folders!
+      const isKeepFile = item.name.endsWith('/.keep');
+      const cleanPath = isKeepFile ? item.name.slice(0, -6) : item.name; // Remove "/.keep"
+      const parts = cleanPath.split('/').filter(Boolean);
 
-          if (i === parts.length - 1) {
-            parent.push({
-              id: currentPath,
-              name: part,
-              type: 'file',
-              path: currentPath,
-            });
-          } else {
+      let currentPath = '';
+      let parent: FileNode[] = root;
+
+      parts.forEach((part, i) => {
+        currentPath += (currentPath ? '/' : '') + part;
+
+        if (i === parts.length - 1) {
+          // Last part: file or folder?
+          if (isKeepFile && item.name === cleanPath + '/.keep') {
+            // It's a folder
             let folder = map.get(currentPath);
             if (!folder) {
               folder = {
@@ -98,10 +98,35 @@ export function App() {
               parent.push(folder);
               map.set(currentPath, folder);
             }
-            parent = folder.children!;
+          } else {
+            // It's a real file
+            const node: FileNode = {
+              id: currentPath,
+              name: part,
+              type: 'file',
+              path: currentPath,
+            };
+            parent.push(node);
+            map.set(currentPath, node);
           }
-        });
+        } else {
+          // Intermediate folder
+          let folder = map.get(currentPath);
+          if (!folder) {
+            folder = {
+              id: currentPath,
+              name: part,
+              type: 'folder',
+              path: currentPath,
+              children: [],
+            };
+            parent.push(folder);
+            map.set(currentPath, folder);
+          }
+          parent = folder.children!;
+        }
       });
+    });
 
     const sortNodes = (nodes: FileNode[]) => {
       nodes.sort((a, b) => {
@@ -142,7 +167,6 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // FIXED: Correct syntax — proper if/else chain with braces
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
@@ -163,8 +187,6 @@ export function App() {
           content = `console.log('Hello from ${name}');\n`;
         } else if (name.endsWith('.json')) {
           content = JSON.stringify({ name }, null, 2);
-        } else {
-          content = '';
         }
       } else {
         content = new Blob([''], { type: 'application/octet-stream' });
@@ -320,23 +342,14 @@ export function App() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Explorer */}
           <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
               <div className="flex gap-2">
-                <button
-                  onClick={() => createFileOrFolder('file')}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                  title="New File"
-                >
+                <button onClick={() => createFileOrFolder('file')} className="p-2 hover:bg-gray-100 rounded-lg" title="New File">
                   <FilePlus className="w-5 h-5 text-gray-600" />
                 </button>
-                <button
-                  onClick={() => createFileOrFolder('folder')}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                  title="New Folder"
-                >
+                <button onClick={() => createFileOrFolder('folder')} className="p-2 hover:bg-gray-100 rounded-lg" title="New Folder">
                   <FolderPlus className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
@@ -350,14 +363,11 @@ export function App() {
                   <p className="text-sm mt-2">Click + to create a file or folder</p>
                 </div>
               ) : (
-                <div className="py-3">
-                  {renderFileTree(files)}
-                </div>
+                <div className="py-3">{renderFileTree(files)}</div>
               )}
             </div>
           </div>
 
-          {/* Editor */}
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
