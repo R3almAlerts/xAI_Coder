@@ -3,9 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Menu,
   X,
-  Bot,
   FolderOpen,
-  MessageSquare,
   Settings,
   Search,
   ChevronDown,
@@ -61,43 +59,34 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
     onLogout,
   }) => {
     const navigate = useNavigate();
-    const { settings } = useSettings();
+
+    // Fixed: Defensive access + loading state
+    const { settings, isLoading: settingsLoading = true } = useSettings();
+
+    const logoUrl =
+      settings?.logoUrl ||
+      'https://vrcxtkstyeutxwhllnws.supabase.co/storage/v1/object/public/logos/logo.png';
+
     const [mobileOpen, setMobileOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
     const [projectsOpen, setProjectsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const searchInputRef = useRef<HTMLInputElement>(null);
     const mobileMenuRef = useRef<HTMLDivElement>(null);
     const profileRef = useRef<HTMLDivElement>(null);
     const projectsRef = useRef<HTMLDivElement>(null);
 
-    const logoUrl =
-      settings.logoUrl ||
-      'https://vrcxtkstyeutxwhllnws.supabase.co/storage/v1/object/public/logos/logo.png';
-
-    // Close on outside click
+    // Close menus on outside click or ESC
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
-        if (
-          mobileMenuRef.current &&
-          !mobileMenuRef.current.contains(e.target as Node)
-        ) {
+        if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node))
           setMobileOpen(false);
-        }
-        if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        if (profileRef.current && !profileRef.current.contains(e.target as Node))
           setProfileOpen(false);
-        }
-        if (projectsRef.current && !projectsRef.current.contains(e.target as Node)) {
+        if (projectsRef.current && !projectsRef.current.contains(e.target as Node))
           setProjectsOpen(false);
-        }
       };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
-    // ESC to close all
-    useEffect(() => {
       const handleEsc = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           setMobileOpen(false);
@@ -105,13 +94,37 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
           setProjectsOpen(false);
         }
       };
+
+      document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleEsc);
-      return () => document.removeEventListener('keydown', handleEsc);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEsc);
+      };
     }, []);
 
     const filteredConvs = conversations.filter((c) =>
       c.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // Show skeleton while settings load
+    if (settingsLoading) {
+      return (
+        <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-white/95 backdrop-blur-lg border-b border-gray-200 dark:bg-gray-900/95 dark:border-gray-800">
+          <div className="flex items-center justify-between h-full px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+              <div className="w-40 h-7 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="hidden lg:block w-72 h-10 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
+              <div className="w-9 h-9 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
+            </div>
+          </div>
+        </header>
+      );
+    }
 
     return (
       <>
@@ -124,8 +137,8 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
                 <img
                   src={logoUrl}
                   alt="xAI Coder Logo"
-                  className="h-9 w-auto rounded-lg"
-                  onError={(e) => (e.currentTarget.src = '/fallback-logo.png')}
+                  className="h-9 w-auto rounded-lg object-contain"
+                  onError={(e) => (e.currentTarget.src = '/vite.svg')}
                 />
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">
                   xAI Coder
@@ -287,7 +300,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
         <AnimatePresence>
           {mobileOpen && (
             <>
-              {/* Backdrop */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -296,7 +308,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
                 className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 md:hidden"
               />
 
-              {/* Panel */}
               <motion.div
                 ref={mobileMenuRef}
                 variants={mobileMenuVariants}
