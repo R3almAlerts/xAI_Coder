@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Bot } from 'lucide-react'; // ← THIS LINE WAS MISSING
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
 import { NavigationMenu } from './components/NavigationMenu';
@@ -30,12 +30,10 @@ function App() {
   const [globalLoading, setGlobalLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Initial data load with timeout fallback
   useEffect(() => {
     let cancelled = false;
 
@@ -47,7 +45,6 @@ function App() {
 
         const load = async () => {
           const userId = await getUserId();
-
           const { data: projectData } = await supabase
             .from('projects')
             .select('*')
@@ -55,7 +52,6 @@ function App() {
             .order('created_at', { ascending: false });
 
           if (cancelled) return;
-
           setProjects(projectData || []);
 
           if (projectData && projectData.length > 0) {
@@ -67,7 +63,7 @@ function App() {
 
         await Promise.race([load(), timeout]);
       } catch (err) {
-        console.warn('Initial load slow or failed, continuing anyway:', err);
+        console.warn('Initial load slow, continuing...', err);
       } finally {
         if (!cancelled) setGlobalLoading(false);
       }
@@ -77,7 +73,6 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load conversations when project changes
   useEffect(() => {
     if (!currentProjectId) return;
 
@@ -89,7 +84,6 @@ function App() {
         .order('updated_at', { ascending: false });
 
       setConversations(data || []);
-
       if (data && data.length > 0 && !currentConvId) {
         setCurrentConvId(data[0].id);
       }
@@ -97,7 +91,6 @@ function App() {
     loadConvs();
   }, [currentProjectId]);
 
-  // Load messages when conversation changes
   useEffect(() => {
     if (!currentConvId) return;
 
@@ -113,7 +106,6 @@ function App() {
     loadMsgs();
   }, [currentConvId]);
 
-  // Send message to Grok
   const sendMessage = async (content: string, attachments?: any[]) => {
     if (!settings.apiKey || isSending) return;
 
@@ -153,7 +145,6 @@ function App() {
     }
   };
 
-  // Handlers
   const handleSelectProject = (id: string) => {
     setCurrentProjectId(id);
     const p = projects.find(x => x.id === id);
@@ -191,10 +182,8 @@ function App() {
     }
   };
 
-  // Settings route
   if (location.pathname === '/settings') return <SettingsPage />;
 
-  // Global loading spinner
   if (globalLoading || settingsLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
@@ -208,8 +197,6 @@ function App() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-
-      {/* Navigation Menu with Logo */}
       <NavigationMenu
         projects={projects}
         conversations={conversations}
@@ -224,10 +211,7 @@ function App() {
         userName="You"
       />
 
-      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col lg:ml-80">
-
-        {/* Header */}
         <div className="bg-white border-b px-6 py-5 flex justify-between items-center shadow-sm">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">
@@ -239,13 +223,12 @@ function App() {
           </div>
           <button
             onClick={() => setIsModelSelectorOpen(true)}
-            className="px-5 py-2.5 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 font-medium rounded-xl hover:from-indigo-200 hover:to-purple-200 transition-all"
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 font-medium rounded-xl hover:from-indigo-200 hover:to-purple-200 transition-all ml-auto"
           >
             {settings.model === 'auto' ? 'Auto' : settings.model}
           </button>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-8">
           {messages.length === 0 ? (
             <div className="text-center mt-32">
@@ -273,7 +256,6 @@ function App() {
           )}
         </div>
 
-        {/* Input */}
         <div className="border-t bg-white px-6 py-5">
           <ChatInput
             onSend={sendMessage}
@@ -284,7 +266,6 @@ function App() {
         </div>
       </div>
 
-      {/* Model Selector Modal */}
       <ModelSelectorModal
         isOpen={isModelSelectorOpen}
         onClose={() => setIsModelSelectorOpen(false)}
@@ -292,7 +273,6 @@ function App() {
         onSelectModel={(model) => useSettings.getState().setSettings({ model })}
       />
 
-      {/* Error Toast */}
       {error && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
           <AlertCircle size={24} />
