@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Loader2, 
-  AlertCircle, 
+  AlertCircleAlert as AlertCircle, 
   Bot, 
   MessageSquare, 
   FolderOpen, 
@@ -20,7 +20,9 @@ import {
   FileJson,
   Package,
   Save,
-  Check
+  Check,
+  FilePlus,
+  FolderPlus
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -66,10 +68,12 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+  const [creatingFileIn, setCreatingFileIn] = useState<string | null>(null); // path prefix
+  const [newFileNameRef = useRef<HTMLInputElement>(null);
+
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -132,7 +136,7 @@ function App() {
     load();
   }, [currentConvId]);
 
-  // Load files from Supabase Storage
+  // Load files from Supabase
   useEffect(() => {
     if (!currentProjectId) {
       setFiles([]);
@@ -163,18 +167,16 @@ function App() {
             if (!part || part === '.') return;
             currentPath += (currentPath ? '/' : '') + part;
 
-            if (i === parts.length - 1) {
-              // File
-              if (!item.metadata) {
-                const node: FileNode = {
-                  id: currentPath,
-                  name: part,
-                  type: 'file',
-                  path: currentPath,
-                };
-                parent.push(node);
-                map.set(currentPath, node);
-              }
+            if (i === parts.length - 1 && item.metadata) {
+              // It's a file
+              const node: FileNode = {
+                id: currentPath,
+                name: part,
+                type: 'file',
+                path: currentPath,
+              };
+              parent.push(node);
+              map.set(currentPath, node);
             } else {
               // Folder
               let folder = map.get(currentPath);
@@ -205,7 +207,7 @@ function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // Save file to Supabase
+  // Save file
   const saveFile = async () => {
     if (!selectedFile || !currentProjectId || selectedFile.type === 'folder') return;
 
@@ -213,17 +215,12 @@ function App() {
     try {
       const { error } = await supabase.storage
         .from('project-files')
-        .upsert([
-          {
-            bucket_id: 'project-files',
-            name: `${currentProjectId}/${selectedFile.path}`,
-            content: fileContent,
-            owner: (await getUserId()),
-          }
-        ], { upsert: true });
+        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), {
+          upsert: true,
+          contentType: 'text/plain'
+        });
 
       if (error) throw error;
-
       setLastSaved(new Date());
     } catch (err) {
       console.error('Save failed:', err);
@@ -233,7 +230,44 @@ function App() {
     }
   };
 
-  // Load file content when selected
+  // Create new file or folder
+  const createFileOrFolder = async (type: 'file' | 'folder') => {
+    if (!currentProjectId) return;
+
+    const name = prompt(`Enter ${type === 'file' ? 'file' : 'folder'} name:`);
+    if (!name) return;
+
+    const path = creatingFileIn ? `${creatingFileIn}/${name}` : name;
+    const fullPath = `${currentProjectId}/${path}`;
+
+    if (type === 'file') {
+      const content = name.endsWith('.tsx') ? `export default function ${name.replace('.tsx', '')}() {\n  return <div>Hello World</div>\n}` : '';
+      
+      try {
+        const { error } = await supabase.storage
+          .from('project-files')
+          .upload(fullPath, new Blob([content]), { upsert: true });
+
+        if (error) throw error;
+
+        // Refresh file list
+        const { data } = await supabase.storage.from('project-files').list(`${currentProjectId}/`, { limit: 1000 });
+        // Rebuild tree...
+        alert(`${type === 'file' ? 'File' : 'Folder'} created: ${name}`);
+      } catch (err) {
+        setError('Failed to create file');
+      }
+    } else {
+      // Create empty folder by uploading a placeholder
+      await supabase.storage
+        .from('project-files')
+        .upload(`${fullPath}/.keep`, new Blob([]), { upsert: true });
+    }
+
+    setCreatingFileIn(null);
+  };
+
+  // Load file content
   useEffect(() => {
     if (!selectedFile || selectedFile.type === 'folder') {
       setFileContent('');
@@ -246,7 +280,7 @@ function App() {
         .download(`${currentProjectId}/${selectedFile.path}`);
 
       if (error || !data) {
-        setFileContent('// File not found or empty');
+        setFileContent('');
         return;
       }
 
@@ -271,7 +305,7 @@ function App() {
     if (['ts', 'tsx', 'js', 'jsx'].includes(ext || '')) return <FileCode size={16} className="text-blue-500" />;
     if (ext === 'json') return <FileJson size={16} className="text-yellow-500" />;
     if (ext === 'md') return <FileText size={16} className="text-gray-600" />;
-    if (['png', 'jpg', 'svg', 'gif'].includes(ext || '')) return <Image size={16} className="text-green-500" />;
+    if (['png', 'jpg', 'svg'].includes(ext || '')) return <Image size={16} className="text-green-500" />;
     if (name === 'package.json') return <Package size={16} className="text-red-500" />;
     return <FileText size={16} className="text-gray-500" />;
   };
@@ -287,8 +321,10 @@ function App() {
           onClick={() => {
             if (node.type === 'folder') {
               toggleFolder(node.id);
+              setCreatingFileIn(node.path);
             } else {
               setSelectedFile(node);
+              setCreatingFileIn(null);
             }
           }}
         >
@@ -478,21 +514,35 @@ function App() {
             </div>
           )}
 
-          {/* FILES TAB - NOW WITH SUPABASE SAVING */}
+          {/* FILES TAB - WITH CREATE FILE/FOLDER */}
           {activeTab === 'files' && (
             <div className="flex h-full">
               <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
-                  <button className="p-1 hover:bg-gray-100 rounded">
-                    <Plus size={16} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => createFileOrFolder('file')}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title="New File"
+                    >
+                      <FilePlus size={16} />
+                    </button>
+                    <button
+                      onClick={() => createFileOrFolder('folder')}
+                      className="p-1 hover:bg-gray-100 rounded"
+                      title="New Folder"
+                    >
+                      <FolderPlus size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto py-2">
                   {files.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       <FolderOpen size={48} className="mx-auto mb-2" />
                       <p className="text-sm">No files yet</p>
+                      <p className="text-xs mt-2 text-gray-500">Click + to create</p>
                     </div>
                   ) : (
                     renderFileTree(files)
@@ -500,6 +550,7 @@ function App() {
                 </div>
               </div>
 
+              {/* Editor */}
               <div className="flex-1 bg-white flex flex-col">
                 {selectedFile && selectedFile.type === 'file' ? (
                   <>
@@ -520,7 +571,6 @@ function App() {
                       </button>
                     </div>
                     <textarea
-                      ref={editorRef}
                       className="flex-1 p-4 font-mono text-sm bg-gray-50 resize-none focus:outline-none"
                       value={fileContent}
                       onChange={(e) => setFileContent(e.target.value)}
@@ -532,6 +582,7 @@ function App() {
                     <div className="text-center">
                       <FileText size={64} className="mx-auto mb-4" />
                       <p>Select a file to edit</p>
+                      <p className="text-sm mt-2">or create a new one with +</p>
                     </div>
                   </div>
                 )}
