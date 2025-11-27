@@ -1,541 +1,364 @@
 // src/App.tsx
-import React, { useRef, useEffect, useState } from 'react'
-import {
-  Settings as SettingsIcon,
-  Loader2,
-  Menu,
-  X,
-  Search,
-  Upload,
-  Trash2,
-  Download,
-  File,
-  Copy,
-  Check,
-} from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-
-import { Message } from './types'
-import { useSettings } from './hooks/useSettings'
-import { useMessages } from './hooks/useMessages'
-import { ModelSelectorModal } from './components/ModelSelectorModal'
-import { ProjectsList } from './components/ProjectsList'
-import { ConversationsList } from './components/ConversationsList'
-import { ChatInput } from './components/ChatInput'
-import { SettingsPage } from './components/SettingsPage'
-import { useLocation, Routes, Route, Link } from 'react-router-dom'
-import { supabase } from './lib/supabase'
-
-// MARKDOWN WITH COPY BUTTONS
-const MarkdownViewer = ({ children }: { children: string }) => {
-  const [copied, setCopied] = useState<string | null>(null)
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(id)
-    setTimeout(() => setCopied(null), 2000)
-  }
-
-  return (
-    <div className="prose prose-sm max-w-none">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ node, inline, className, children, ...props }) {
-            const match = /language-(\w+)/.exec(className || '')
-            const codeString = String(children).replace(/\n$/, '')
-            const codeId = Math.random().toString(36)
-
-            if (!inline && match) {
-              return (
-                <div className="my-4 -mx-5 relative group bg-gray-900 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => copyToClipboard(codeString, codeId)}
-                    className="absolute top-2 right-2 p-2 bg-gray-800 hover:bg-gray-700 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                  >
-                    {copied === codeId ? (
-                      <Check size={16} className="text-green-400" />
-                    ) : (
-                      <Copy size={16} className="text-gray-400" />
-                    )}
-                  </button>
-                  <pre className="p-4 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700">
-                    <code className="text-xs text-gray-100 font-mono">
-                      {codeString}
-                    </code>
-                  </pre>
-                </div>
-              )
-            }
-
-            return (
-              <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs font-mono" {...props}>
-                {children}
-              </code>
-            )
-          },
-        }}
-      >
-        {children || ''}
-      </ReactMarkdown>
-    </div>
-  )
-}
-
-const ChatMessage = ({ message }: { message: Message }) => {
-  const isUser = message.role === 'user'
-
-  return (
-    <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-sm">G</span>
-        </div>
-      )}
-      <div className={`max-w-2xl ${isUser ? 'bg-indigo-600 text-white' : 'bg-white'} rounded-2xl px-5 py-3 shadow-sm`}>
-        {isUser ? (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-        ) : (
-          <MarkdownViewer>{message.content}</MarkdownViewer>
-        )}
-      </div>
-      {isUser && (
-        <div className="w-9 h-9 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-sm">U</span>
-        </div>
-      )}
-    </div>
-  )
-}
+import React, { useState, useEffect, useRef } from 'react';
+import { Loader2, Settings, AlertCircle } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { supabase, getUserId } from './lib/supabase';
+import { NavigationMenu } from './components/NavigationMenu';
+import { ChatMessage } from './components/ChatMessage';
+import { ChatInput } from './components/ChatInput';
+import { SettingsPage } from './components/SettingsPage';
+import { ModelSelectorModal } from './components/ModelSelectorModal';
+import { useSettings } from './hooks/useSettings';
+import { Message, Project, Conversation } from './types';
 
 function App() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [configProject, setConfigProject] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState<'instructions' | 'files'>('instructions')
-  const [instructions, setInstructions] = useState('')
-  const [projectFiles, setProjectFiles] = useState<any[]>([])
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Global state
+  const { settings, isLoading: settingsLoading } = useSettings();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [projectIdToDelete, setProjectIdToDelete] = useState<string | null>(null)
-  const [projectTitleToDelete, setProjectTitleToDelete] = useState('')
+  // Sidebar state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [currentConvId, setCurrentConvId] = useState<string | null>(null);
+  const [currentProjectName, setCurrentProjectName] = useState<string>('');
 
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
-  const [currentConvId, setCurrentConvId] = useState<string | null>(null)
+  // UI state
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { settings = { apiKey: '', baseUrl: 'https://api.x.ai', model: 'auto', logoUrl: '' }, setSettings, isLoading: isLoadingSettings } = useSettings()
-  const {
-    messages,
-    conversations,
-    currentConv,
-    projects,
-    currentProject,
-    addMessage,
-    isLoading: isLoadingMessages,
-    createConversation,
-    createProject,
-    deleteConversation,
-    setProjects,
-  } = useMessages(currentConvId, currentProjectId, {
-    setCurrentProjectId,
-    setCurrentConvId,
-  })
-
-  const filteredProjects = projects.filter(p =>
-    p.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-  const filteredConversations = conversations.filter(c =>
-    c.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const location = useLocation()
-  const isSettingsPage = location.pathname === '/settings'
+  // Auto-scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
+  // Load projects & conversations
   useEffect(() => {
-    async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) await supabase.auth.signInAnonymously()
-    }
-    init()
-  }, [])
+    const loadData = async () => {
+      const userId = await getUserId();
+      if (!userId) return;
 
-  const openConfig = async (project: any) => {
-    setConfigProject(project)
-    setActiveTab('instructions')
-    setProjectFiles([])
-    setInstructions('')
-    const { data } = await supabase
-      .from('projects')
-      .select('instructions')
-      .eq('id', project.id)
-      .single()
-    setInstructions(data?.instructions || '')
-  }
+      // Load projects
+      const { data: projectData } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-  const loadProjectFiles = async (projectId: string) => {
-    const { data } = await supabase.storage
-      .from('project-files')
-      .list(`project_${projectId}`)
-    setProjectFiles(data || [])
-  }
+      setProjects(projectData || []);
 
-  const handleFileUpload = async (files: FileList | null) => {
-    if (!files || !configProject) return
-    setUploading(true)
-    for (const file of files) {
-      await supabase.storage
-        .from('project-files')
-        .upload(`project_${configProject.id}/${Date.now()}_${file.name}`, file, { upsert: true })
-    }
-    await loadProjectFiles(configProject.id)
-    setUploading(false)
-  }
+      // Set default project
+      if (projectData && projectData.length > 0) {
+        const defaultProject = projectData[0];
+        setCurrentProjectId(defaultProject.id);
+        setCurrentProjectName(defaultProject.title);
+      }
+    };
 
-  const deleteFile = async (fileName: string) => {
-    if (!configProject) return
-    await supabase.storage.from('project-files').remove([`project_${configProject.id}/${fileName}`])
-    setProjectFiles(prev => prev.filter(f => f.name !== fileName))
-  }
+    loadData();
+  }, []);
 
-  const downloadFile = async (fileName: string) => {
-    if (!configProject) return
-    const { data } = await supabase.storage
-      .from('project-files')
-      .download(`project_${configProject.id}/${fileName}`)
-    if (data) {
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName
-      a.click()
-      URL.revokeObjectURL(url)
-    }
-  }
+  // Load conversations when project changes
+  useEffect(() => {
+    if (!currentProjectId) return;
 
-  const saveInstructions = async () => {
-    if (!configProject) return
-    await supabase
-      .from('projects')
-      .update({ instructions, updated_at: new Date().toISOString() })
-      .eq('id', configProject.id)
-  }
+    const loadConversations = async () => {
+      const { data } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('project_id', currentProjectId)
+        .order('updated_at', { ascending: false });
 
-  const sendMessage = async (content: string) => {
-    if (!settings.apiKey || !currentConv || !content.trim()) return
+      setConversations(data || []);
 
-    await addMessage({ role: 'user', content, timestamp: Date.now() })
-    setIsLoading(true)
+      // Auto-select first conversation
+      if (data && data.length > 0 && !currentConvId) {
+        setCurrentConvId(data[0].id);
+      }
+    };
+
+    loadConversations();
+  }, [currentProjectId]);
+
+  // Load messages when conversation changes
+  useEffect(() => {
+    if (!currentConvId) return;
+
+    const loadMessages = async () => {
+      setIsLoadingMessages(true);
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', currentConvId)
+        .order('timestamp', { ascending: true });
+
+      setMessages(data || []);
+      setIsLoadingMessages(false);
+    };
+
+    loadMessages();
+  }, [currentConvId]);
+
+  // Handle sending message
+  const sendMessage = async (content: string, attachments?: any[]) => {
+    if (!settings.apiKey || isSending) return;
+
+    const userMessage: Message = {
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+      attachments,
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsSending(true);
+    setError(null);
 
     try {
-      const fullHistory = messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }))
-      fullHistory.push({ role: 'user', content })
+      const modelToUse = settings.model === 'auto' ? 'grok-2-latest' : settings.model;
 
-      const res = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${settings.apiKey}`,
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.apiKey}`,
         },
         body: JSON.stringify({
-          model: settings.model === 'auto' ? 'grok-2-latest' : settings.model,
+          model: modelToUse,
           messages: [
-            ...(instructions ? [{ role: 'system', content: instructions }] : []),
-            ...fullHistory,
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content }
           ],
           temperature: 0.7,
-          max_tokens: 4096,
         }),
-      })
+      });
 
-      if (!res.ok) {
-        const error = await res.text()
-        throw new Error(`API Error ${res.status}: ${error}`)
-      }
+      if (!response.ok) throw new Error('API request failed');
 
-      const data = await res.json()
-      const reply = data.choices?.[0]?.message?.content || 'No response from Grok.'
-
-      await addMessage({
+      const data = await response.json();
+      const assistantMessage: Message = {
         role: 'assistant',
-        content: reply,
+        content: data.choices[0].message.content,
         timestamp: Date.now(),
-      })
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Update conversation timestamp
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', currentConvId);
     } catch (err: any) {
-      await addMessage({
-        role: 'assistant',
-        content: `Error: ${err.message}`,
-        timestamp: Date.now(),
-      })
+      setError(err.message || 'Failed to send message');
     } finally {
-      setIsLoading(false)
+      setIsSending(false);
     }
+  };
+
+  // Project & Conversation handlers
+  const handleSelectProject = (id: string) => {
+    setCurrentProjectId(id);
+    const project = projects.find(p => p.id === id);
+    setCurrentProjectName(project?.title || '');
+    setCurrentConvId(null);
+  };
+
+  const handleCreateProject = async () => {
+    const title = prompt('Project name:');
+    if (!title?.trim()) return;
+
+    const { data } = await supabase
+      .from('projects')
+      .insert({ title, user_id: await getUserId() })
+      .select()
+      .single();
+
+    if (data) {
+      setProjects(prev => [data, ...prev]);
+      setCurrentProjectId(data.id);
+      setCurrentProjectName(data.title);
+    }
+  };
+
+  const handleCreateConversation = async () => {
+    if (!currentProjectId) return;
+
+    const { data } = await supabase
+      .from('conversations')
+      .insert({
+        title: 'New Conversation',
+        project_id: currentProjectId,
+        user_id: await getUserId(),
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setConversations(prev => [data, ...prev]);
+      setCurrentConvId(data.id);
+    }
+  };
+
+  const handleDeleteProject = async (project: { id: string; title: string }) => {
+    if (!confirm(`Delete project "${project.title}" and all its conversations?`)) return;
+
+    await supabase.from('conversations').delete().eq('project_id', project.id);
+    await supabase.from('projects').delete().eq('id', project.id);
+    setProjects(prev => prev.filter(p => p.id !== project.id));
+
+    if (currentProjectId === project.id) {
+      const remaining = projects.filter(p => p.id !== project.id);
+      if (remaining.length > 0) {
+        handleSelectProject(remaining[0].id);
+      } else {
+        setCurrentProjectId(null);
+        setCurrentProjectName('');
+      }
+    }
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    await supabase.from('messages').delete().eq('conversation_id', id);
+    await supabase.from('conversations').delete().eq('id', id);
+    setConversations(prev => prev.filter(c => c.id !== id));
+
+    if (currentConvId === id) {
+      const remaining = conversations.filter(c => c.id !== id);
+      setCurrentConvId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  };
+
+  if (location.pathname === '/settings') {
+    return <SettingsPage />;
   }
 
-  if (isLoadingSettings || isLoadingMessages) {
+  if (settingsLoading || isLoadingMessages) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* HEADER */}
-      {!isSettingsPage && (
-        <header className="bg-white border-b shadow-sm flex items-center justify-between px-4 py-3 z-50">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg">
-              {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-            {/* CUSTOM LOGO SUPPORT */}
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border border-gray-300">
-              {settings.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-              ) : (
-                <span className="text-white font-bold text-xl">CG</span>
+    <div className="flex h-screen bg-gray-50">
+      {/* Navigation */}
+      <NavigationMenu
+        projects={projects}
+        conversations={conversations}
+        currentProjectId={currentProjectId}
+        currentConvId={currentConvId}
+        currentProjectName={currentProjectName}
+        onSelectProject={handleSelectProject}
+        onSelectConversation={setCurrentConvId}
+        onCreateProject={handleCreateProject}
+        onCreateConversation={handleCreateConversation}
+        onDeleteProject={handleDeleteProject}
+        onDeleteConversation={handleDeleteConversation}
+        onUpdateProjectTitle={async (id, title) => {
+          await supabase.from('projects').update({ title }).eq('id', id);
+          setProjects(prev => prev.map(p => p.id === id ? { ...p, title } : p));
+          if (currentProjectId === id) setCurrentProjectName(title);
+        }}
+        onUpdateConversationTitle={async (id, title) => {
+          await supabase.from('conversations').update({ title }).eq('id', id);
+          setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
+        }}
+        onOpenSettings={() => navigate('/settings')}
+        userName="You"
+      />
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col ml-0 lg:ml-80">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {conversations.find(c => c.id === currentConvId)?.title || 'New Chat'}
+              </h2>
+              {currentProjectName && (
+                <p className="text-sm text-gray-500">in {currentProjectName}</p>
               )}
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Code Guru</h1>
+            <button
+              onClick={() => setIsModelSelectorOpen(true)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              {settings.model === 'auto' ? 'Auto' : settings.model}
+            </button>
           </div>
-          <Link to="/settings" className="p-2 hover:bg-gray-100 rounded-lg">
-            <SettingsIcon size={24} className="text-gray-600" />
-          </Link>
-        </header>
-      )}
+        </div>
 
-      <div className="flex flex-1 relative overflow-hidden">
-        {/* SIDEBAR */}
-        <aside className={`fixed md:static inset-0 w-64 bg-white border-r z-50 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-          <div className="h-full flex flex-col">
-            <div className="p-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search projects..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 text-sm bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-500 mt-20">
+              <p className="text-lg">Start a conversation</p>
+              <p className="text-sm mt-2">Send a message to begin</p>
             </div>
-            <div className="flex-1 overflow-y-auto">
-              <ProjectsList
-                currentProjectId={currentProjectId}
-                projects={filteredProjects}
-                onSelectProject={(id) => { setCurrentProjectId(id); setCurrentConvId(null); setIsSidebarOpen(false); }}
-                onCreateNew={createProject}
-                onDeleteProject={(p) => { setProjectIdToDelete(p.id); setProjectTitleToDelete(p.title); setDeleteModalOpen(true); }}
-                onUpdateTitle={(id, title) => supabase.from('projects').update({ title }).eq('id', id)}
-                onOpenConfig={openConfig}
-              />
-              <ConversationsList
-                currentConvId={currentConvId}
-                conversations={filteredConversations}
-                onSelectConv={(id) => { setCurrentConvId(id); setIsSidebarOpen(false); }}
-                onCreateNew={createConversation}
-                onDeleteConv={deleteConversation}
-                currentProjectName={currentProject?.title || 'Default'}
-              />
-            </div>
-          </div>
-        </aside>
-
-        {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
-
-        {/* MAIN CHAT */}
-        <div className="flex-1 flex flex-col">
-          {!isSettingsPage && (
-            <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{currentConv?.title || 'New Conversation'}</h2>
-              {currentProject && <button onClick={() => openConfig(currentProject)} className="p-2 hover:bg-gray-100 rounded-lg"><SettingsIcon size={20} /></button>}
+          ) : (
+            <div className="space-y-6 max-w-4xl mx-auto">
+              {messages.map((msg, i) => (
+                <ChatMessage key={i} message={msg} />
+              ))}
+              {isSending && (
+                <div className="flex gap-3 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  </div>
+                  <div className="bg-gray-100 rounded-2xl px-4 py-3">
+                    <div className="flex gap-2">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
           )}
+        </div>
 
-          <div className="flex-1 overflow-y-auto bg-gray-50">
-            <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
-              <Routes>
-                <Route path="/" element={
-                  messages.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-center">
-                      <div className="space-y-4">
-                        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center overflow-hidden border-4 border-white shadow-xl">
-                          {settings.logoUrl ? (
-                            <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                          ) : (
-                            <span className="text-white font-bold text-4xl">CG</span>
-                          )}
-                        </div>
-                        <h2 className="text-2xl font-bold">Welcome to Code Guru</h2>
-                        <p className="text-gray-500">Your AI-powered coding assistant</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {messages.map((m, i) => <ChatMessage key={m.id || i} message={m} />)}
-                      {isLoading && (
-                        <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                            <Loader2 className="w-5 h-5 text-white animate-spin" />
-                          </div>
-                          <div className="bg-gray-100 rounded-2xl px-4 py-3">
-                            <div className="flex gap-1">
-                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150" />
-                              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300" />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )
-                } />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </div>
-          </div>
-
-          {!isSettingsPage && (
-            <div className="bg-white border-t">
-              <div className="max-w-4xl mx-auto">
-                <ChatInput
-                  onSend={sendMessage}
-                  disabled={isLoading || !settings.apiKey}
-                  currentModel={settings.model}
-                  onOpenModelSelector={() => setIsModelSelectorOpen(true)}
-                  currentProjectId={currentProjectId}
-                />
-              </div>
-            </div>
-          )}
+        {/* Input */}
+        <div className="border-t border-gray-200 bg-white px-6 py-4">
+          <ChatInput
+            onSend={sendMessage}
+            disabled={isSending || !currentConvId}
+            currentModel={settings.model}
+            onOpenModelSelector={() => setIsModelSelectorOpen(true)}
+          />
         </div>
       </div>
 
-      {/* FOOTER */}
-      {!isSettingsPage && (
-        <footer className="bg-white border-t py-3 px-6 text-center">
-          <p className="text-xs text-gray-500">
-            Powered by <span className="font-semibold text-indigo-600">xAI</span>
-          </p>
-        </footer>
-      )}
-
-      {/* CONFIG MODAL */}
-      {configProject && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setConfigProject(null)} />
-          <div className="relative w-full max-w-2xl bg-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b">
-              <div>
-                <h2 className="text-2xl font-bold">{configProject.title}</h2>
-                <p className="text-sm text-gray-500">Project Configuration</p>
-              </div>
-              <button onClick={() => setConfigProject(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X size={24} /></button>
-            </div>
-
-            <div className="flex border-b">
-              <button onClick={() => setActiveTab('instructions')} className={`px-6 py-3 font-medium ${activeTab === 'instructions' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}>Instructions</button>
-              <button onClick={() => { setActiveTab('files'); loadProjectFiles(configProject.id); }} className={`px-6 py-3 font-medium ${activeTab === 'files' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}>
-                Files ({projectFiles.length})
-              </button>
-            </div>
-
-            <div className="flex-1 p-6 overflow-y-auto">
-              {activeTab === 'instructions' && (
-                <textarea
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  rows={15}
-                  className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-                  placeholder="You are a senior full-stack engineer..."
-                />
-              )}
-              {activeTab === 'files' && (
-                <div>
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files); }}
-                    onDragOver={(e) => e.preventDefault()}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-indigo-500"
-                  >
-                    <Upload size={48} className="mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-600 font-medium">Drop files here or click</p>
-                    <input ref={fileInputRef} type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} className="hidden" />
-                  </div>
-                  {uploading && <p className="mt-4 text-indigo-600">Uploading...</p>}
-                  {projectFiles.map(file => (
-                    <div key={file.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mt-2">
-                      <div className="flex items-center gap-3">
-                        <File size={20} />
-                        <span className="text-sm">{file.name}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => downloadFile(file.name)} className="p-2 hover:bg-gray-200 rounded"><Download size={16} /></button>
-                        <button onClick={() => deleteFile(file.name)} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {activeTab === 'instructions' && (
-              <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
-                <button onClick={() => setConfigProject(null)} className="px-6 py-2 bg-gray-100 rounded-lg">Cancel</button>
-                <button onClick={saveInstructions} className="px-6 py-2 bg-indigo-600 text-white rounded-lg">Save</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* DELETE MODAL */}
-      {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteModalOpen(false)} />
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
-            <h3 className="text-2xl font-bold mb-4">Delete "{projectTitleToDelete}"?</h3>
-            <p className="text-gray-600 mb-8">This cannot be undone.</p>
-            <div className="flex gap-3 justify-center">
-              <button onClick={() => setDeleteModalOpen(false)} className="px-6 py-3 bg-gray-100 rounded-lg">Cancel</button>
-              <button onClick={async () => {
-                if (!projectIdToDelete) return
-                await supabase.storage.from('project-files').remove([`project_${projectIdToDelete}/`])
-                await supabase.from('conversations').delete().eq('project_id', projectIdToDelete)
-                await supabase.from('projects').delete().eq('id', projectIdToDelete)
-                setProjects(prev => prev.filter(p => p.id !== projectIdToDelete))
-                setDeleteModalOpen(false)
-                setConfigProject(null)
-              }} className="px-6 py-3 bg-red-600 text-white rounded-lg">Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Modals */}
       <ModelSelectorModal
         isOpen={isModelSelectorOpen}
         onClose={() => setIsModelSelectorOpen(false)}
         currentModel={settings.model}
-        onSelectModel={(m) => setSettings({ ...settings, model: m })}
+        onSelectModel={(model) => useSettings.getState().setSettings({ model })}
       />
+
+      {error && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
+          <AlertCircle size={20} />
+          {error}
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

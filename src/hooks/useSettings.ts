@@ -9,47 +9,70 @@ interface Settings {
   logoUrl: string
 }
 
-export const useSettings = create<{
+interface SettingsStore {
   settings: Settings
   isLoading: boolean
-  setSettings: (s: Partial<Settings>) => Promise<void>
-}>((set) => ({
-  settings: {
-    apiKey: '',
-    baseUrl: 'https://api.x.ai',
-    model: 'auto',
-    logoUrl: ''
-  },
-  isLoading: true,
+  isInitialized: boolean
+  setSettings: (updates: Partial<Settings>) => Promise<void>
+  loadSettings: () => Promise<void>
+}
 
-  setSettings: async (newSettings) => {
-    const updated = { ...useSettings.getState().settings, ...newSettings }
+const DEFAULT_SETTINGS: Settings = {
+  apiKey: '',
+  baseUrl: 'https://api.x.ai',
+  model: 'auto',
+  logoUrl: '',
+}
+
+export const useSettings = create<SettingsStore>((set, get) => ({
+  settings: DEFAULT_SETTINGS,
+  isLoading: true,
+  isInitialized: false,
+
+  setSettings: async (updates) => {
+    const updated = { ...get().settings, ...updates }
     set({ settings: updated })
 
-    await supabase
-      .from('settings')
-      .upsert({ id: 'global', ...updated })
+    try {
+      await supabase
+        .from('settings')
+        .upsert({ id: 'global', ...updated }, { onConflict: 'id' })
+    } catch (error) {
+      console.error('Failed to save settings:', error)
+      // Still update locally — user experience matters
+    }
   },
 
-  init: async () => {
+  loadSettings: async () => {
+    if (get().isInitialized) return
+
+    set({ isLoading: true })
+
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('settings')
         .select('*')
         .eq('id', 'global')
-        .single()
+        .maybeSingle()
 
-      if (data) {
-        set({ settings: data, isLoading: false })
-      } else {
-        set({ isLoading: false })
-      }
+      if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows
+
+      set({
+        settings: data || DEFAULT_SETTINGS,
+        isLoading: false,
+        isInitialized: true,
+      })
     } catch (err) {
       console.error('Settings load failed:', err)
-      set({ isLoading: false })
+      set({
+        settings: DEFAULT_SETTINGS,
+        isLoading: false,
+        isInitialized: true,
+      })
     }
-  }
+  },
 }))
 
-// Auto-init
-useSettings.getState().init()
+// Auto-load settings when app starts
+// This is safe to call multiple times
+useSettings.getState().loadSettings()
