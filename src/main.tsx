@@ -5,13 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
-// Instantly mark as loaded — triggers fade-in
-const root = document.getElementById('root')
-if (root) {
-  root.setAttribute('data-loaded', 'true')
-}
-
-ReactDOM.createRoot(root!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <BrowserRouter>
     <App />
   </BrowserRouter>
