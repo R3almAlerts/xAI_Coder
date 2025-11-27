@@ -16,8 +16,7 @@ export function ChatInput({
   currentModel,
   onOpenModelSelector,
 }: ChatInputProps) {
-  const [input, setInput] = useState('');
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(''); // ← Fixed: only one declaration
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
