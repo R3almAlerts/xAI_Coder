@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* src/index.css — add these 3 lines at the very top */
+#root {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+#root.loaded {
+  opacity: 1;
+}
