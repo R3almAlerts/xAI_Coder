@@ -1,89 +1,36 @@
 // src/hooks/useSettings.ts
-import { create } from 'zustand'
-import { supabase } from '../lib/supabase'
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { Settings } from '../types';
 
-interface Settings {
-  apiKey: string
-  baseUrl: string
-  model: string
-  logoUrl: string
+interface SettingsState extends Settings {
+  isLoading: boolean;
+  setSettings: (newSettings: Partial<Settings>) => void;
 }
 
-interface SettingsStore {
-  settings: Settings
-  isLoading: boolean
-  isInitialized: boolean
-  setSettings: (updates: Partial<Settings>) => Promise<void>
-  loadSettings: () => Promise<void>
-}
-
-// Fallback defaults — uses your real xAI key if nothing saved yet
-const DEFAULT_SETTINGS: Settings = {
-  apiKey: import.meta.env.VITE_XAI_API_KEY || '',
-  baseUrl: import.meta.env.VITE_XAI_BASE_URL || 'https://api.x.ai',
-  model: 'auto',
-  logoUrl: '',
-}
-
-export const useSettings = create<SettingsStore>((set, get) => ({
-  settings: DEFAULT_SETTINGS,
-  isLoading: true,
-  isInitialized: false,
-
-  // Save to Supabase + update local state
-  setSettings: async (updates) => {
-    const updated = { ...get().settings, ...updates }
-    set({ settings: updated })
-
-    try {
-      await supabase
-        .from('settings')
-        .upsert(
-          { id: 'global', ...updated },
-          { onConflict: 'id' }
-        )
-    } catch (error) {
-      console.error('Failed to save settings to Supabase:', error)
-      // Still keep local update — UX first
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set, get) => ({
+      apiKey: '',
+      baseUrl: 'https://api.x.ai/v1',
+      model: 'grok-4',
+      logoUrl: '',
+      isLoading: true,
+      setSettings: (newSettings) =>
+        set((state) => ({ ...state, ...newSettings, isLoading: false })),
+    }),
+    {
+      name: 'xai-coder-settings',
+      partialize: (state) => ({ apiKey: state.apiKey, baseUrl: state.baseUrl, model: state.model, logoUrl: state.logoUrl }),
     }
-  },
+  )
+);
 
-  // Load from Supabase (only once)
-  loadSettings: async () => {
-    const state = get()
-    if (state.isInitialized) return
-
-    set({ isLoading: true })
-
-    try {
-      const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .eq('id', 'global')
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') {
-        // PGRST116 = no rows returned → normal for first-time users
-        throw error
-      }
-
-      const loaded = data || DEFAULT_SETTINGS
-
-      set({
-        settings: loaded,
-        isLoading: false,
-        isInitialized: true,
-      })
-    } catch (err) {
-      console.error('Failed to load settings, using defaults:', err)
-      set({
-        settings: DEFAULT_SETTINGS,
-        isLoading: false,
-        isInitialized: true,
-      })
-    }
-  },
-}))
-
-// Auto-load on app start (safe to call multiple times)
-useSettings.getState().loadSettings()
+export function useSettings() {
+  const store = useSettingsStore();
+  // Simulate initial load
+  if (store.isLoading) {
+    setTimeout(() => store.setSettings({}), 0); // Immediate resolve for demo
+  }
+  return store;
+}
