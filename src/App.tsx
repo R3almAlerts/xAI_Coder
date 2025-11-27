@@ -17,7 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase, getUserId } from './lib/supabase';
+import { supabase, { getUserId } from './lib/supabase';
 import { NavigationMenu } from './components/NavigationMenu';
 import { SettingsPage } from './components/SettingsPage';
 import { useSettings } from './hooks/useSettings';
@@ -32,7 +32,6 @@ interface FileNode {
 
 export function App() {
   const navigate = useNavigate();
-  ();
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
@@ -44,13 +43,10 @@ export function App() {
   const [fileContent, setFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [creatingFileIn, setCreatingFileIn] = useState<string>(''); // used only for “new file inside folder” UI
+  const [creatingFileIn, setCreatingFileIn] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
-  /* ------------------------------------------------------------------ */
-  /* Icon helper */
-  /* ------------------------------------------------------------------ */
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
 
@@ -66,9 +62,6 @@ export function App() {
     return <FileText className="w-4 h-4 text-gray-600" />;
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Load project files (unchanged) */
-  /* ------------------------------------------------------------------ */
   const loadFiles = async () => {
     if (!currentProjectId) {
       setFiles([]);
@@ -101,7 +94,6 @@ export function App() {
 
       const isKeep = item.name.endsWith('/.keep');
       const cleanPath = isKeep ? item.name.slice(0, -6) : item.name;
-      const parts = cleanPath = isKeep ? item.name.slice(0, -6) : item.name;
       const parts = cleanPath.split('/').filter(Boolean);
 
       if (parts.length === 0) return;
@@ -113,7 +105,7 @@ export function App() {
         currentPath += (currentPath ? '/' : '') + part;
 
         if (i === parts.length - 1) {
-          if (isKeep) return; // folder marker
+          if (isKeep) return;
 
           const node: FileNode = {
             id: currentPath,
@@ -155,9 +147,6 @@ export function App() {
     setFiles(root);
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Effects */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const init = async () => {
       try {
@@ -183,9 +172,6 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  /* ------------------------------------------------------------------ */
-  /* CRUD helpers */
-  /* ------------------------------------------------------------------ */
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
@@ -215,9 +201,11 @@ export function App() {
       if (error) throw error;
 
       await loadFiles();
-      if (parentPath) setExpandedFolders((prev) => new Set(prev).add(parentPath));
+      if (parentPath) {
+        setExpandedFolders((prev) => new Set(prev).add(parentPath));
+      }
     } catch (err: any) {
-      setError(err.message ?? 'Failed');
+      setError(err.message || 'Operation failed');
     }
   };
 
@@ -241,7 +229,6 @@ export function App() {
     }
   };
 
-  // Load file content when selection changes
   useEffect(() => {
     if (!selectedFile || selectedFile.type === 'folder') {
       setFileContent('');
@@ -257,9 +244,6 @@ export function App() {
     load();
   }, [selectedFile, currentProjectId]);
 
-  /* ------------------------------------------------------------------ */
-  /* Tree rendering – now 100% stable */
-  /* ------------------------------------------------------------------ */
   const toggleFolder = (path: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -286,7 +270,7 @@ export function App() {
             }
           }}
         >
-          {/* Folder icon (open / closed) */}
+          {/* Folder Icon */}
           {node.type === 'folder' ? (
             expandedFolders.has(node.path) ? (
               <FolderOpen className="w-5 h-5 text-amber-600" />
@@ -294,25 +278,24 @@ export function App() {
               <FolderClosed className="w-5 h-5 text-amber-600" />
             )
           ) : (
-            <div className="w-5" /> {/* spacer so file icons line up */}
+            <div className="w-5" />
           )}
 
-          {/* Chevron for folders
-          {node.type === 'folder' ? (
+          {/* Chevron */}
+          {node.type === 'folder' && (
             expandedFolders.has(node.path) ? (
               <ChevronDown className="w-4 h-4 text-gray-500" />
             ) : (
               <ChevronRight className="w-4 h-4 text-gray-500" />
             )
-          ) : null}
+          )}
 
-          {/* File-specific icon */}
+          {/* File Icon */}
           {node.type === 'file' && getFileIcon(node.name)}
 
           <span className="truncate flex-1">{node.name}</span>
         </div>
 
-        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div className="border-l-2 border-gray-200 ml-6">
             {renderFileTree(node.children, level + 1)}
@@ -322,9 +305,6 @@ export function App() {
     ));
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Render */
-  /* ------------------------------------------------------------------ */
   if (location.pathname === '/settings') return <SettingsPage />;
 
   if (globalLoading || settingsLoading) {
@@ -357,7 +337,6 @@ export function App() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Explorer */}
           <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
             <div className="px-5 py-4 border-b flex items-center justify-between">
               <h3 className="font-semibold text-sm uppercase tracking-wider text-gray-600">Explorer</h3>
@@ -392,7 +371,6 @@ export function App() {
             </div>
           </div>
 
-          {/* Editor */}
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
@@ -433,7 +411,6 @@ export function App() {
         </div>
       </div>
 
-      {/* Error toast */}
       {error && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
           <AlertCircle className="w-6 h-6" />
