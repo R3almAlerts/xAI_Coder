@@ -126,13 +126,8 @@ export function App() {
     );
   }
 
-  // Settings page
-  if (showSettings) {
-    return <SettingsPage />;
-  }
-
   return (
-    <div className="h-screen flex bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Main Left Sidebar */}
       <NavigationMenu
         currentView={currentView}
@@ -141,7 +136,7 @@ export function App() {
         userName={userName}
       />
 
-      {/* Projects & Conversations Sidebar */}
+      {/* Project & Conversation Sidebar */}
       <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
         <HierarchicalSidebar
           currentProjectId={currentProjectId}
@@ -173,32 +168,43 @@ export function App() {
         />
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 bg-white overflow-hidden flex items-center justify-center">
-        {location.pathname.startsWith('/chat/') ? (
-          <div className="text-center max-w-2xl px-8">
-            <div className="bg-gradient-to-br from-blue-500 to-cyan-500 w-32 h-32 rounded-3xl mx-auto mb-8 shadow-2xl" />
-            <h1 className="text-5xl font-bold text-gray-900 mb-4">
-              Grok-Powered Chat
-            </h1>
-            <p className="text-2xl text-gray-600 mb-2">
-              Streaming • Real-time Code • File Uploads • Markdown
-            </p>
-            <p className="text-lg text-gray-500">
-              Ready to build the future.
-            </p>
+      {/* Main Content */}
+      <main className="flex-1 bg-white overflow-hidden">
+        {showSettings ? (
+          <div className="h-full flex flex-col">
+            <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6">
+              <h2 className="text-2xl font-bold">Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                ← Back
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <SettingsPage />
+            </div>
+          </div>
+        ) : location.pathname.startsWith('/chat/') ? (
+          <div className="h-full flex flex-col">
+            <div className="h-16 border-b border-gray-200 flex items-center px-6">
+              <h2 className="text-2xl font-bold">Chat with Grok</h2>
+            </div>
+            {/* Your Chat Interface component goes here */}
+            <div className="flex-1 p-8 text-center text-gray-400">
+              <MessageSquare className="w-24 h-24 mx-auto mb-6 opacity-50" />
+              <p className="text-2xl font-medium">Chat interface ready</p>
+              <p className="text-sm mt-3">Selected conversation: {currentConvId || 'None'}</p>
+            </div>
           </div>
         ) : (
-          <div className="text-center text-gray-400">
+          <div className="h-full flex items-center justify-center text-gray-400 text-center">
             <div className="bg-gray-200 border-2 border-dashed rounded-xl w-32 h-32 mx-auto mb-8" />
             <h2 className="text-3xl font-semibold mb-2">Welcome to xAI Coder</h2>
             <p className="text-xl">Select a project or start a new chat</p>
           </div>
         )}
       </main>
-
-      {/* Error Toast */}
-      {/* Add your error toast here if needed */}
     </div>
   );
 }

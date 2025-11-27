@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSettings } from '../hooks/useSettings';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 interface NavigationMenuProps {
   currentView: 'home' | 'chat' | 'settings';
@@ -43,7 +43,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
 
   return (
     <>
-      {/* Mobile Header - Only shows on small screens */}
+      {/* Mobile Header */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <img src={logoUrl} alt="Logo" className="h-9 w-9 rounded-lg object-contain" />
@@ -54,14 +54,12 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
         </button>
       </header>
 
-      {/* Sidebar - Always visible on desktop, slide-in on mobile */}
+      {/* Sidebar */}
       <motion.aside
         initial={false}
-        animate={{
-          x: mobileOpen ? 0 : window.innerWidth >= 1024 ? 0 : -280,
-        }}
+        animate={{ x: mobileOpen ? 0 : window.innerWidth >= 1024 ? 0 : -280 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col lg:relative lg:z-auto lg:translate-x-0"
+        className="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col lg:relative lg:translate-x-0 lg:z-auto"
       >
         {/* Header */}
         <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-200 dark:border-gray-800 lg:h-auto lg:py-6">
@@ -105,7 +103,10 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
           <div className="h-px bg-gray-200 dark:bg-gray-800 my-6" />
 
           <button
-            onClick={onOpenSettings}
+            onClick={() => {
+              onOpenSettings();
+              setMobileOpen(false);
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <Settings size={20} />
@@ -114,7 +115,10 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
 
           {onLogout && (
             <button
-              onClick={onLogout}
+              onClick={() => {
+                onLogout();
+                setMobileOpen(false);
+              }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               <LogOut size={20} />
