@@ -1,6 +1,6 @@
 // src/components/SettingsPage.tsx
 import React, { useState, useRef } from 'react';
-import { Upload, X, Check, Loader2, Save, LogOut } from 'lucide-react';
+import { Upload, X, Check, Loader2, Save } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
@@ -14,7 +14,6 @@ export const SettingsPage = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Local state (syncs with store on save)
   const [localApiKey, setLocalApiKey] = useState(settings.apiKey);
   const [localBaseUrl, setLocalBaseUrl] = useState(settings.baseUrl);
   const [localModel, setLocalModel] = useState(settings.model);
@@ -44,21 +43,35 @@ export const SettingsPage = () => {
 
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `logo.${fileExt}`;
+      const fileName = `logo-${Date.now()}.${fileExt}`;
 
-      const { error } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('logos')
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, file, {
+          upsert: true,
+          contentType: file.type || 'image/png',
+          cacheControl: '3600',
+        });
 
-      if (error) throw error;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        // Better error message for common issues
+        if (uploadError.message.includes('row-level security policy')) {
+          alert('Upload failed: Row Level Security policy blocks uploads. Go to Supabase Dashboard → Authentication → Policies → Add policy for INSERT on storage.objects allowing anon to logos bucket.');
+        } else {
+          alert(`Upload failed: ${uploadError.message}`);
+        }
+        throw uploadError;
+      }
 
       const { data } = supabase.storage
         .from('logos')
         .getPublicUrl(fileName);
 
-      setLocalLogoUrl(data.publicUrl);
-    } catch (err) {
-      alert('Failed to upload logo');
+      // Cache-bust for fresh preview
+      setLocalLogoUrl(`${data.publicUrl}?t=${Date.now()}`);
+    } catch (err: any) {
+      console.error('Logo upload failed:', err);
     } finally {
       setUploading(false);
     }
@@ -179,7 +192,7 @@ export const SettingsPage = () => {
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center">
-                  <div className="bg-gray-100 w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center flex">
+                  <div className="bg-gray-100 w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center">
                     <Upload size={32} className="text-gray-400" />
                   </div>
                   <p className="text-gray-600 mb-4">Upload a logo (PNG, JPG, SVG)</p>
