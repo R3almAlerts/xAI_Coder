@@ -5,16 +5,13 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
-// This single line is the nuclear fix for the flash
-if (import.meta.env.DEV) {
-  // @vite-ignore — forces Vite to treat this as static
-  const root = document.getElementById('root')
-  if (root) {
-    root.classList.add('loaded')
-  }
+// Instantly mark as loaded — triggers fade-in
+const root = document.getElementById('root')
+if (root) {
+  root.setAttribute('data-loaded', 'true')
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(root!).render(
   <BrowserRouter>
     <App />
   </BrowserRouter>

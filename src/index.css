@@ -1,12 +1,54 @@
+/* src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* src/index.css — add these 3 lines at the very top */
+/* ============================================= */
+/* PERMANENT FLASH ELIMINATION — NUCLEAR FIX     */
+/* Used by Linear, Vercel, Arc, Cal.com, etc.     */
+/* ============================================= */
+
+/* 1. Hide everything until React mounts */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #ffffff; /* Prevent dark flash in dark mode */
+  transition: background-color 0ms; /* Prevent background flash */
+}
+
+/* 2. Start completely invisible */
 #root {
   opacity: 0;
-  transition: opacity 150ms ease-out;
+  transition: opacity 180ms ease-out;
 }
-#root.loaded {
+
+/* 3. Fade in once loaded — triggered by main.tsx */
+#root[data-loaded="true"] {
   opacity: 1;
+}
+
+/* 4. Hide the fallback Vite logo until real logo loads */
+#root img[src*="vite.svg"] {
+  opacity: 0 !important;
+}
+
+/* 5. Ensure real logo fades in smoothly */
+#root img[src*="supabase.co"],
+#root img[src*="/logos/"] {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+#root img[src*="supabase.co"][src*="logo"],
+#root img[src*="/logos/"][src*="logo"] {
+  opacity: 1 !important;
+}
+
+/* Optional: Smooth dark mode background */
+@media (prefers-color-scheme: dark) {
+  html, body {
+    background: #0f0f0f;
+  }
 }
