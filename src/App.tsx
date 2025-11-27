@@ -20,7 +20,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 // FIXED: Correct Supabase imports
 import { supabase } from './lib/supabase';
-import getUserId from './lib/supabase'; // default export
+import { getUserId } from './lib/supabase'; // now named import — correct!
 
 import { NavigationMenu } from './components/NavigationMenu';
 import { SettingsPage } from './components/SettingsPage';
