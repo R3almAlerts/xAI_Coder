@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Loader2, 
   AlertCircle, 
@@ -120,7 +120,7 @@ export function App() {
     setFiles(root);
   };
 
-  // Initial load
+  // Initial project load
   useEffect(() => {
     const init = async () => {
       try {
@@ -148,7 +148,7 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // Create file/folder
+  // FIXED: Create file or folder (no more Blob errors!)
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
@@ -160,26 +160,49 @@ export function App() {
     const storagePath = `${currentProjectId}/${fullPath}${type === 'folder' ? '/.keep' : ''}`;
 
     try {
-      const content = type === 'file' 
-        ? (name.endsWith('.tsx') 
-          ? `export default function ${name.replace('.tsx', '')}() {\n  return <div className="p-8">Hello from ${name}!</div>\n}`
-          : name.endsWith('.ts')
-          ? `console.log('Hello from ${name}');\n`
-          : '')
-        : [];
+      let content: string | Blob = '';
+
+      if (type === 'file') {
+        if (name.endsWith('.tsx')) {
+          content = `import React from 'react';
+
+export default function ${name.replace('.tsx', '')}() {
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold">Hello from ${name.replace('.tsx', '')}!</h1>
+    </div>
+  );
+}`;
+        } else if (name.endsWith('.ts')) {
+          content = `console.log('Hello from ${name}');\n`;
+        } else if (name.endsWith('.json')) {
+          content = JSON.stringify({ message: `Hello from ${name}` }, null, 2);
+        } else {
+          content = '';
+        }
+      } else {
+        // Folder: use proper empty Blob
+        content = new Blob([''], { type: 'application/octet-stream' });
+      }
 
       const { error } = await supabase.storage
         .from('project-files')
-        .upload(storagePath, new Blob(content), { upsert: true });
+        .upload(storagePath, content, {
+          upsert: true,
+          contentType: type === 'file' ? 'text/plain' : undefined
+        });
 
       if (error) throw error;
 
       await loadFiles();
+
       if (prefix) {
         setExpandedFolders(prev => new Set(prev).add(prefix));
       }
+
       alert(`${type === 'file' ? 'File' : 'Folder'} created: ${name}`);
     } catch (err: any) {
+      console.error('Create failed:', err);
       setError(`Failed to create ${type}: ${err.message}`);
     }
   };
@@ -191,7 +214,10 @@ export function App() {
     try {
       const { error } = await supabase.storage
         .from('project-files')
-        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), { upsert: true });
+        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), {
+          upsert: true,
+          contentType: 'text/plain'
+        });
       if (error) throw error;
       setLastSaved(new Date());
     } catch (err: any) {
@@ -294,7 +320,7 @@ export function App() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar - Explorer */}
+          {/* Explorer Sidebar */}
           <div className="w-72 bg-white border-r border-gray-200 flex flex-col">
             <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
