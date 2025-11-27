@@ -4,19 +4,17 @@ import { useSettings } from '../hooks/useSettings';
 import { Upload, Copy, Check, Settings as SettingsIcon, Key, Palette, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export default function SettingsPage() {
-  // Fixed: Defensive destructuring + loading state
+// Named export — this is what App.tsx expects
+export const SettingsPage: React.FC = () => {
   const { settings, isLoading, updateSettings } = useSettings();
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Safely read values only when settings exist
   const currentApiKey = settings?.apiKey || '';
   const currentLogoUrl = settings?.logoUrl || '';
 
-  // Show skeleton while loading
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto p-8">
@@ -87,7 +85,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-8">
-
         {/* Logo Upload */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -177,12 +174,12 @@ export default function SettingsPage() {
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
             >
-              x.ai/api →
+              x.ai/api
             </a>
           </p>
         </div>
 
-        {/* Theme (Future) */}
+        {/* Theme */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center gap-3 mb-4">
             <Palette size={20} className="text-purple-600" />
@@ -195,4 +192,7 @@ export default function SettingsPage() {
       </div>
     </div>
   );
-}
+};
+
+// Optional: keep display name for React DevTools
+SettingsPage.displayName = 'SettingsPage';
