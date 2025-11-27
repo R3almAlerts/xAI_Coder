@@ -1,20 +1,20 @@
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
-import { 
-  Loader2, 
-  AlertCircle, 
+import {
+  Loader2,
+  AlertCircle,
   FolderOpen,
   Folder as FolderClosed,
   FileText,
   FileCode,
   FileJson,
-  Package,
+  Package as PackageIcon,
   ChevronRight,
   ChevronDown,
   FilePlus,
   FolderPlus,
   Save,
-  Check
+  Check,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -32,6 +32,7 @@ interface FileNode {
 
 export function App() {
   const navigate = useNavigate();
+  ();
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
@@ -43,31 +44,31 @@ export function App() {
   const [fileContent, setFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [creatingFileIn, setCreatingFileIn] = useState<string>('');
+  const [creatingFileIn, setCreatingFileIn] = useState<string>(''); // used only for “new file inside folder” UI
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
-  // ──────────────────────────────────────────────────────────────
-  // Helper – choose the correct icon for a file name
-  // ──────────────────────────────────────────────────────────────
+  /* ------------------------------------------------------------------ */
+  /* Icon helper */
+  /* ------------------------------------------------------------------ */
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
 
-    if (ext === 'tsx' || ext === 'ts' || ext === 'jsx' || ext === 'js') {
+    if (['ts', 'tsx', 'js', 'jsx'].includes(ext)) {
       return <FileCode className="w-4 h-4 text-blue-600" />;
     }
     if (ext === 'json') {
       return <FileJson className="w-4 h-4 text-yellow-600" />;
     }
-    if (ext === 'package' || name === 'package.json') {
-      return <Package className="w-4 h-4 text-green-600" />;
+    if (name === 'package.json') {
+      return <PackageIcon className="w-4 h-4 text-red-600" />;
     }
     return <FileText className="w-4 h-4 text-gray-600" />;
   };
 
-  // ──────────────────────────────────────────────────────────────
-  // Load files (unchanged)
-  // ──────────────────────────────────────────────────────────────
+  /* ------------------------------------------------------------------ */
+  /* Load project files (unchanged) */
+  /* ------------------------------------------------------------------ */
   const loadFiles = async () => {
     if (!currentProjectId) {
       setFiles([]);
@@ -86,7 +87,7 @@ export function App() {
     const root: FileNode[] = [];
     const folderPaths = new Set<string>();
 
-    (data || []).forEach(item => {
+    (data || []).forEach((item) => {
       if (item.name?.endsWith('/.keep')) {
         const folderPath = item.name.slice(0, -6);
         if (folderPath) folderPaths.add(folderPath);
@@ -95,11 +96,12 @@ export function App() {
 
     const map = new Map<string, FileNode>();
 
-    (data || []).forEach(item => {
+    (data || []).forEach((item) => {
       if (!item.name) return;
 
       const isKeep = item.name.endsWith('/.keep');
       const cleanPath = isKeep ? item.name.slice(0, -6) : item.name;
+      const parts = cleanPath = isKeep ? item.name.slice(0, -6) : item.name;
       const parts = cleanPath.split('/').filter(Boolean);
 
       if (parts.length === 0) return;
@@ -111,7 +113,7 @@ export function App() {
         currentPath += (currentPath ? '/' : '') + part;
 
         if (i === parts.length - 1) {
-          if (isKeep) return; // folder marker – ignore
+          if (isKeep) return; // folder marker
 
           const node: FileNode = {
             id: currentPath,
@@ -147,15 +149,15 @@ export function App() {
         if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      nodes.forEach(n => n.children && sort(n.children));
+      nodes.forEach((n) => n.children && sort(n.children));
     };
     sort(root);
     setFiles(root);
   };
 
-  // ──────────────────────────────────────────────────────────────
-  // Effects
-  // ──────────────────────────────────────────────────────────────
+  /* ------------------------------------------------------------------ */
+  /* Effects */
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const init = async () => {
       try {
@@ -177,50 +179,140 @@ export function App() {
     init();
   }, []);
 
-  useEffect(() => { loadFiles(); }, [currentProjectId]);
+  useEffect(() => {
+    loadFiles();
+  }, [currentProjectId]);
 
-  // ──────────────────────────────────────────────────────────────
-  // File tree rendering
-  // ──────────────────────────────────────────────────────────────
-  const renderFileTree = (nodes: FileNode[], level = 0) => {
-    return nodes.map(node => (
+  /* ------------------------------------------------------------------ */
+  /* CRUD helpers */
+  /* ------------------------------------------------------------------ */
+  const createFileOrFolder = async (type: 'file' | 'folder') => {
+    if (!currentProjectId) return;
+
+    const name = prompt(`Enter ${type} name:`);
+    if (!name) return;
+
+    const parentPath = creatingFileIn || '';
+    const fullPath = parentPath ? `${parentPath}/${name}` : name;
+    const storagePath = `${currentProjectId}/${fullPath}${type === 'folder' ? '/.keep' : ''}`;
+
+    try {
+      const content =
+        type === 'folder'
+          ? new Blob([''], { type: 'application/octet-stream' })
+          : name.endsWith('.tsx')
+          ? `import React from 'react';\n\nexport default function ${name.replace('.tsx', '')}() {\n  return <div>Hello ${name.replace('.tsx', '')}!</div>\n}`
+          : name.endsWith('.ts')
+          ? `console.log('Hello from ${name}');\n`
+          : name.endsWith('.json')
+          ? JSON.stringify({ hello: name }, null, 2)
+          : '';
+
+      const { error } = await supabase.storage
+        .from('project-files')
+        .upload(storagePath, content, { upsert: true });
+
+      if (error) throw error;
+
+      await loadFiles();
+      if (parentPath) setExpandedFolders((prev) => new Set(prev).add(parentPath));
+    } catch (err: any) {
+      setError(err.message ?? 'Failed');
+    }
+  };
+
+  const saveFile = async () => {
+    if (!selectedFile || selectedFile.type === 'folder' || !currentProjectId) return;
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.storage
+        .from('project-files')
+        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), {
+          upsert: true,
+          contentType: 'text/plain',
+        });
+      if (error) throw error;
+      setLastSaved(new Date());
+    } catch {
+      setError('Save failed');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Load file content when selection changes
+  useEffect(() => {
+    if (!selectedFile || selectedFile.type === 'folder') {
+      setFileContent('');
+      return;
+    }
+
+    const load = async () => {
+      const { data } = await supabase.storage
+        .from('project-files')
+        .download(`${currentProjectId}/${selectedFile.path}`);
+      if (data) setFileContent(await data.text());
+    };
+    load();
+  }, [selectedFile, currentProjectId]);
+
+  /* ------------------------------------------------------------------ */
+  /* Tree rendering – now 100% stable */
+  /* ------------------------------------------------------------------ */
+  const toggleFolder = (path: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.has(path) ? next.delete(path) : next.add(path);
+      return next;
+    });
+  };
+
+  const renderFileTree = (nodes: FileNode[], level = 0): JSX.Element[] => {
+    return nodes.map((node) => (
       <React.Fragment key={node.path}>
         <div
+          className={`
+            group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer select-none text-sm
+            hover:bg-indigo-50 transition-all
+            ${selectedFile?.path === node.path ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-gray-700'}
+          `}
+          style={{ paddingLeft: `${level * 24 + 16}px` }}
           onClick={() => {
             if (node.type === 'folder') {
-              setExpandedFolders(prev => {
-                const next = new Set(prev);
-                if (next.has(node.path)) next.delete(node.path);
-                else next.add(node.path);
-                return next;
-              });
+              toggleFolder(node.path);
             } else {
               setSelectedFile(node);
-              // load file content here when you implement it
             }
           }}
-          className={`flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded cursor-pointer select-none ${
-            selectedFile?.path === node.path ? 'bg-indigo-100 text-indigo-700' : ''
-          }`}
-          style={{ paddingLeft: `${level * 20 + 12}px` }}
         >
+          {/* Folder icon (open / closed) */}
           {node.type === 'folder' ? (
-            expandedFolders.has(node.path) ? 
-              <FolderOpen className="w-5 h-5 text-amber-600" /> :
+            expandedFolders.has(node.path) ? (
+              <FolderOpen className="w-5 h-5 text-amber-600" />
+            ) : (
               <FolderClosed className="w-5 h-5 text-amber-600" />
+            )
           ) : (
-            getFileIcon(node.name)
+            <div className="w-5" /> {/* spacer so file icons line up */}
           )}
 
-          {node.type === 'folder' && (
-            expandedFolders.has(node.path) ? 
-              <ChevronDown className="w-4 h-4 text-gray-500" /> : 
+          {/* Chevron for folders
+          {node.type === 'folder' ? (
+            expandedFolders.has(node.path) ? (
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            ) : (
               <ChevronRight className="w-4 h-4 text-gray-500" />
-          )}
+            )
+          ) : null}
 
-          <span className="truncate flex-1 font-medium">{node.name}</span>
+          {/* File-specific icon */}
+          {node.type === 'file' && getFileIcon(node.name)}
+
+          <span className="truncate flex-1">{node.name}</span>
         </div>
 
+        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div className="border-l-2 border-gray-200 ml-6">
             {renderFileTree(node.children, level + 1)}
@@ -230,10 +322,11 @@ export function App() {
     ));
   };
 
-  // ──────────────────────────────────────────────────────────────
-  // Rest of the component (unchanged)
-  // ──────────────────────────────────────────────────────────────
+  /* ------------------------------------------------------------------ */
+  /* Render */
+  /* ------------------------------------------------------------------ */
   if (location.pathname === '/settings') return <SettingsPage />;
+
   if (globalLoading || settingsLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
@@ -247,7 +340,6 @@ export function App() {
     <div className="flex h-screen bg-gray-50">
       <NavigationMenu
         currentProjectId={currentProjectId}
-        currentProjectName={currentProjectId}
         currentProjectName={currentProjectName}
         onSelectProject={(id, name) => {
           setCurrentProjectId(id);
@@ -265,14 +357,23 @@ export function App() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
+          {/* Explorer */}
           <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="px-5 py-4 border-b flex items-center justify-between">
               <h3 className="font-semibold text-sm uppercase tracking-wider text-gray-600">Explorer</h3>
               <div className="flex gap-2">
-                <button onClick={() => createFileOrFolder('file')} className="p-2 hover:bg-gray-100 rounded-lg transition" title="New File">
+                <button
+                  onClick={() => createFileOrFolder('file')}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
+                  title="New File"
+                >
                   <FilePlus className="w-5 h-5 text-gray-600" />
                 </button>
-                <button onClick={() => createFileOrFolder('folder')} className="p-2 hover:bg-gray-100 rounded-lg" title="New Folder">
+                <button
+                  onClick={() => createFileOrFolder('folder')}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
+                  title="New Folder"
+                >
                   <FolderPlus className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
@@ -291,7 +392,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Editor pane – unchanged */}
+          {/* Editor */}
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
@@ -314,7 +415,7 @@ export function App() {
                 <textarea
                   className="flex-1 p-8 font-mono text-sm bg-gray-50 resize-none focus:outline-none leading-relaxed"
                   value={fileContent}
-                  onChange={e => setFileContent(e.target.value)}
+                  onChange={(e) => setFileContent(e.target.value)}
                   spellCheck={false}
                   placeholder="// Start coding..."
                 />
@@ -332,11 +433,14 @@ export function App() {
         </div>
       </div>
 
+      {/* Error toast */}
       {error && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
           <AlertCircle className="w-6 h-6" />
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-6 text-2xl">×</button>
+          <button onClick={() => setError(null)} className="ml-6 text-2xl">
+            ×
+          </button>
         </div>
       )}
     </div>
