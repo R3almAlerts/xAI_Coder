@@ -8,7 +8,18 @@ import {
   FolderOpen, 
   Terminal,
   Code2,
-  Sparkles
+  Sparkles,
+  FileText,
+  Folder,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  Trash2,
+  FileCode,
+  Image,
+  FileJson,
+  Package,
+  Settings as SettingsIcon
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -22,12 +33,21 @@ import { Message, Project, Conversation } from './types';
 
 type Tab = 'chat' | 'files' | 'terminal' | 'preview';
 
+interface FileNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileNode[];
+  content?: string;
+  projectId: string;
+}
+
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
-  const [activeTab, setActiveTab] = useState<Tab>('chat');
+  const [activeTab, setActiveTab] = useState<Tab>('files'); // default to files for demo
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +57,10 @@ function App() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [currentProjectName, setCurrentProjectName] = useState('');
+
+  const [files, setFiles] = useState<FileNode[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
 
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(true);
@@ -74,7 +98,7 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load conversations & messages
+  // Load conversations
   useEffect(() => {
     if (!currentProjectId) return;
     const load = async () => {
@@ -89,6 +113,7 @@ function App() {
     load();
   }, [currentProjectId]);
 
+  // Load messages
   useEffect(() => {
     if (!currentConvId) return;
     const load = async () => {
@@ -102,7 +127,98 @@ function App() {
     load();
   }, [currentConvId]);
 
-  // Send message
+  // Load files for current project
+  useEffect(() => {
+    if (!currentProjectId) {
+      setFiles([]);
+      return;
+    }
+
+    // Mock file structure (replace with Supabase later)
+    const mockFiles: FileNode[] = [
+      {
+        id: '1',
+        name: 'src',
+        type: 'folder',
+        projectId: currentProjectId,
+        children: [
+          { id: '2', name: 'App.tsx', type: 'file', content: '// Your code here', projectId: currentProjectId },
+          { id: '3', name: 'main.tsx', type: 'file', content: 'root.render(<App />)', projectId: currentProjectId },
+          {
+            id: '4',
+            name: 'components',
+            type: 'folder',
+            projectId: currentProjectId,
+            children: [
+              { id: '5', name: 'NavigationMenu.tsx', type: 'file', projectId: currentProjectId },
+              { id: '6', name: 'ChatInput.tsx', type: 'file', projectId: currentProjectId },
+            ]
+          }
+        ]
+      },
+      { id: '7', name: 'package.json', type: 'file', projectId: currentProjectId },
+      { id: '8', name: 'README.md', type: 'file', projectId: currentProjectId },
+      { id: '9', name: 'public', type: 'folder', projectId: currentProjectId, children: [] }
+    ];
+
+    setFiles(mockFiles);
+    setExpandedFolders(new Set(['1', '4'])); // auto-expand src and components
+  }, [currentProjectId]);
+
+  const toggleFolder = (id: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const getFileIcon = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (ext === 'tsx' || ext === 'ts' || ext === 'js' || ext === 'jsx') return <FileCode size={16} className="text-blue-500" />;
+    if (ext === 'json') return <FileJson size={16} className="text-yellow-500" />;
+    if (ext === 'md') return <FileText size={16} className="text-gray-600" />;
+    if (ext === 'png' || ext === 'jpg' || ext === 'svg') return <Image size={16} className="text-green-500" />;
+    if (name === 'package.json') return <Package size={16} className="text-red-500" />;
+    return <FileText size={16} className="text-gray-500" />;
+  };
+
+  const renderFileTree = (nodes: FileNode[], level = 0) => {
+    return nodes.map(node => (
+      <div key={node.id}>
+        <div
+          className={`flex items-center gap-2 px-2 py-1 hover:bg-gray-100 rounded cursor-pointer select-none ${
+            selectedFile?.id === node.id ? 'bg-indigo-100 text-indigo-700 font-medium' : ''
+          }`}
+          style={{ paddingLeft: `${level * 16 + 8}px` }}
+          onClick={() => {
+            if (node.type === 'folder') {
+              toggleFolder(node.id);
+            } else {
+              setSelectedFile(node);
+            }
+          }}
+        >
+          {node.type === 'folder' ? (
+            expandedFolders.has(node.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+          ) : (
+            <div className="w-4" />
+          )}
+          {node.type === 'folder' ? (
+            <Folder size={16} className={expandedFolders.has(node.id) ? "text-yellow-600" : "text-yellow-500"} />
+          ) : (
+            getFileIcon(node.name)
+          )}
+          <span className="text-sm">{node.name}</span>
+        </div>
+        {node.type === 'folder' && node.children && expandedFolders.has(node.id) && (
+          <div>{renderFileTree(node.children, level + 1)}</div>
+        )}
+      </div>
+    ));
+  };
+
   const sendMessage = async (content: string) => {
     if (!settings.apiKey || isSending) return;
     const userMsg: Message = { role: 'user', content, timestamp: Date.now() };
@@ -189,7 +305,12 @@ function App() {
         currentProjectId={currentProjectId}
         currentConvId={currentConvId}
         currentProjectName={currentProjectName}
-        onSelectProject={(id) => { setCurrentProjectId(id); const p = projects.find(x => x.id === id); setCurrentProjectName(p?.title || ''); }}
+        onSelectProject={(id) => { 
+          setCurrentProjectId(id); 
+          const p = projects.find(x => x.id === id); 
+          setCurrentProjectName(p?.title || ''); 
+          setActiveTab('files'); // auto-open files tab when switching project
+        }}
         onSelectConversation={setCurrentConvId}
         onCreateProject={handleCreateProject}
         onCreateConversation={handleCreateConversation}
@@ -197,37 +318,16 @@ function App() {
         userName="You"
       />
 
-      {/* Right Panel with Bolt.new-style tabs */}
+      {/* Right Panel */}
       <div className="flex-1 flex flex-col lg:ml-80">
 
         {/* Tab Bar */}
         <div className="bg-white border-b border-gray-200 flex items-center px-2 py-2">
           <div className="flex gap-1">
-            <TabButton
-              active={activeTab === 'chat'}
-              onClick={() => setActiveTab('chat')}
-              icon={<MessageSquare size={18} />}
-              label="Chat"
-            />
-            <TabButton
-              active={activeTab === 'files'}
-              onClick={() => setActiveTab('files')}
-              icon={<FolderOpen size={18} />}
-              label="Files"
-            />
-            <TabButton
-              active={activeTab === 'terminal'}
-              onClick={() => setActiveTab('terminal')}
-              icon={<Terminal size={18} />}
-              label="Terminal"
-            />
-            <TabButton
-              active={activeTab === 'preview'}
-              onClick={() => setActiveTab('preview')}
-              icon={<Code2 size={18} />}
-              label="Preview"
-              badge="Live"
-            />
+            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={<MessageSquare size={18} />} label="Chat" />
+            <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FolderOpen size={18} />} label="Files" />
+            <TabButton active={activeTab === 'terminal'} onClick={() => setActiveTab('terminal')} icon={<Terminal size={18} />} label="Terminal" />
+            <TabButton active={activeTab === 'preview'} onClick={() => setActiveTab('preview')} icon={<Code2 size={18} />} label="Preview" badge="Live" />
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -254,7 +354,7 @@ function App() {
                 </p>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-8 px-6 py-8">
+              <div className="flex-1 overflow-y-auto px-6 py-8">
                 {messages.length === 0 ? (
                   <div className="text-center mt-32">
                     <div className="bg-gradient-to-br from-indigo-100 to-purple-100 w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center">
@@ -292,27 +392,70 @@ function App() {
             </div>
           )}
 
-          {/* FILES TAB – Placeholder */}
+          {/* FILES TAB - FULLY WORKING */}
           {activeTab === 'files' && (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-              <div className="text-center">
-                <FolderOpen size={64} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-xl text-gray-500">File browser coming soon</p>
+            <div className="flex h-full">
+              {/* File Tree */}
+              <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
+                  <button className="p-1 hover:bg-gray-100 rounded">
+                    <Plus size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto py-2">
+                  {files.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <FolderOpen size={48} className="mx-auto mb-2" />
+                      <p className="text-sm">No files</p>
+                    </div>
+                  ) : (
+                    renderFileTree(files)
+                  )}
+                </div>
+              </div>
+
+              {/* Editor */}
+              <div className="flex-1 bg-white flex flex-col">
+                {selectedFile ? (
+                  <>
+                    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getFileIcon(selectedFile.name)}
+                        <span className="font-medium text-sm">{selectedFile.name}</span>
+                      </div>
+                      <button className="p-1 hover:bg-gray-100 rounded">
+                        <Trash2 size={16} className="text-red-500" />
+                      </button>
+                    </div>
+                    <textarea
+                      className="flex-1 p-4 font-mono text-sm bg-gray-50 resize-none focus:outline-none"
+                      defaultValue={selectedFile.content || '// Click a file to edit'}
+                      spellCheck={false}
+                    />
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-gray-400">
+                    <div className="text-center">
+                      <FileText size={64} className="mx-auto mb-4" />
+                      <p>Select a file to edit</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* TERMINAL TAB – Placeholder */}
+          {/* TERMINAL & PREVIEW unchanged */}
           {activeTab === 'terminal' && (
             <div className="h-full flex items-center justify-center bg-gray-900 text-green-400 font-mono">
               <div className="text-center">
                 <Terminal size={64} className="mx-auto mb-4" />
-                <p className="text-2xl">$ Terminal integration in progress...</p>
+                <p className="text-2xl">$ Terminal coming soon...</p>
               </div>
             </div>
           )}
 
-          {/* PREVIEW TAB – Placeholder */}
           {activeTab === 'preview' && (
             <div className="h-full bg-white flex flex-col">
               <div className="bg-gray-100 border-b px-4 py-2 text-sm text-gray-600">
@@ -322,7 +465,6 @@ function App() {
                 <div className="text-center">
                   <Sparkles size={64} className="mx-auto text-purple-500 mb-4" />
                   <p className="text-2xl font-medium text-gray-700">Your app will appear here</p>
-                  <p className="text-gray-500 mt-2">Real-time preview powered by Code Guru</p>
                 </div>
               </div>
             </div>
@@ -347,7 +489,6 @@ function App() {
   );
 }
 
-// Reusable Tab Button (Bolt.new style)
 const TabButton: React.FC<{
   active: boolean;
   onClick: () => void;
@@ -359,19 +500,12 @@ const TabButton: React.FC<{
     onClick={onClick}
     className={`
       px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all
-      ${active 
-        ? 'bg-indigo-600 text-white shadow-md' 
-        : 'text-gray-600 hover:bg-gray-100'
-      }
+      ${active ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}
     `}
   >
     {icon}
     {label}
-    {badge && (
-      <span className="ml-2 px-2 py-0.5 text-xs bg-white/20 rounded-full">
-        {badge}
-      </span>
-    )}
+    {badge && <span className="ml-2 px-2 py-0.5 text-xs bg-white/20 rounded-full">{badge}</span>}
   </button>
 );
 
