@@ -14,7 +14,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSettings } from '../hooks/useSettings';
 import { Project } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 
 interface NavigationMenuProps {
   projects?: Project[];
@@ -36,8 +35,6 @@ const dropdownVariants = {
 export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
   ({
     projects = [],
-    currentProjectId,
-    currentProjectName,
     onSelectProject,
     onCreateProject,
     onOpenSettings,
@@ -50,34 +47,28 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
     const [logoUrl, setLogoUrl] = useState<string>('');
     const [isLogoLoading, setIsLogoLoading] = useState(true);
 
-    // Invisible 1x1 pixel — prevents any flash
+    // Invisible fallback — never shows vite.svg
     const FALLBACK_LOGO =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
-    // Check Supabase bucket for existing logo
+    // Smart logo loading from Supabase
     useEffect(() => {
-      async function loadLogo() {
-        if (!settings?.logoUrl) {
-          setLogoUrl(FALLBACK_LOGO);
-          setIsLogoLoading(false);
-          return;
-        }
-
-        // If we have a stored logoUrl, verify it exists and is accessible
-        const checkImage = new Image();
-        checkImage.onload = () => {
-          setLogoUrl(settings.logoUrl!);
-          setIsLogoLoading(false);
-        };
-        checkImage.onerror = () => {
-          // If broken or missing, fall back gracefully
-          setLogoUrl(FALLBACK_LOGO);
-          setIsLogoLoading(false);
-        };
-        checkImage.src = settings.logoUrl;
+      if (!settings?.logoUrl) {
+        setLogoUrl(FALLBACK_LOGO);
+        setIsLogoLoading(false);
+        return;
       }
 
-      loadLogo();
+      const img = new Image();
+      img.onload = () => {
+        setLogoUrl(settings.logoUrl!);
+        setIsLogoLoading(false);
+      };
+      img.onerror = () => {
+        setLogoUrl(FALLBACK_LOGO);
+        setIsLogoLoading(false);
+      };
+      img.src = settings.logoUrl;
     }, [settings?.logoUrl]);
 
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -89,8 +80,10 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
 
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
-        if (profile.current && !profile.current.contains(e.target as Node)) setProfileOpen(false);
-        if (projectsRef.current && !projectsRef.current.contains(e.target as Node)) setProjectsOpen(false);
+        if (profileRef.current && !profileRef.current.contains(e.target as Node))
+          setProfileOpen(false);
+        if (projectsRef.current && !projectsRef.current.contains(e.target as Node))
+          setProjectsOpen(false);
       };
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -100,10 +93,9 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-200 dark:bg-gray-900/95 dark:border-gray-800 shadow-sm">
         <nav className="max-w-full px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
           <div className="flex items-center justify-between h-16">
-            {/* Logo — Perfect Load, No Flash */}
+            {/* Logo — Perfect */}
             <div className="flex items-center gap-3">
               <div className="relative w-9 h-9">
-                {/* Real Logo */}
                 <img
                   src={logoUrl}
                   alt="xAI Coder Logo"
@@ -111,7 +103,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
                     isLogoLoading || logoUrl === FALLBACK_LOGO ? 'opacity-0' : 'opacity-100'
                   }`}
                 />
-                {/* Skeleton */}
                 {(isLogoLoading || logoUrl === FALLBACK_LOGO) && (
                   <div className="absolute inset-0 h-9 w-9 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
                 )}
@@ -192,11 +183,13 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
                 <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               </div>
 
-              {/* User Menu — Settings + Logout */}
-              <div className="relative" ref={profile}>
+              {/* User Menu — FIXED: profileRef.current */}
+              <div className="relative" ref={profileRef}>
                 <button
                   onClick={() => setProfileOpen(o => !o)}
                   className="flex items-center gap-2.5 hover:opacity-80 transition"
+                  aria-haspopup="true"
+                  aria-expanded={profileOpen}
                 >
                   <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center shadow-md">
                     <User size={18} className="text-white" />
@@ -243,6 +236,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = React.memo(
               <button
                 onClick={() => setMobileOpen(true)}
                 className="md:hidden text-gray-700 dark:text-gray-300"
+                aria-label="Open menu"
               >
                 <Menu size={26} />
               </button>
