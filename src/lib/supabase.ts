@@ -1,35 +1,65 @@
 // src/lib/supabase.ts
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://vrcxtkstyeutxwhllnws.supabase.co'
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyY3h0a3N0eWV1dHh3aGxsbndzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzEyNzQ3NzcsImV4cCI6MjA0Njg1MDc3N30.q1L5x9k9t5v5u5v5w5x5y5z5A5B5C5D5E5F5G5H5I5J'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-    detectSessionInUrl: false
-  },
-  global: {
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`
-    }
-  }
-})
-
-// CRITICAL: Export uploadFile function
-export const uploadFile = async (file: File, path: string) => {
-  const { data, error } = await supabase.storage
-    .from('project-files')
-    .upload(path, file, { upsert: true })
-
-  if (error) throw error
-  return data
+// === Validation ===
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables!')
+  console.error('Create .env with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
+  throw new Error('Supabase config missing')
 }
 
-// Also export getUserId for other hooks
-export const getUserId = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  return user?.id || 'anonymous'
+// === Client ===
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// === Get User ID (with fallback) ===
+export const getUserId = async (): Promise<string> => {
+  try {
+    const { data } = await supabase.auth.getUser()
+    return data.user?.id || 'anonymous'
+  } catch {
+    return 'anonymous'
+  }
+}
+
+// === FILE UPLOAD UTILITY (used by ChatInput.tsx) ===
+export const uploadFile = async (file: File) => {
+  const userId = await getUserId()
+  const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin'
+  const fileName = `${crypto.randomUUID()}.${fileExt}`
+  const filePath = `${userId}/${fileName}`
+
+  const { data, error } = await supabase.storage
+    .from('chat-attachments')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+  if (error) {
+    console.error('Supabase upload error:', error)
+    return { data: null, error }
+  }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('chat-attachments')
+    .getPublicUrl(filePath)
+
+  return {
+    data: {
+      path: filePath,
+      publicUrl,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+    },
+    error: null,
+  }
+}
+
+// === Debug (dev only) ===
+if (import.meta.env.DEV) {
+  console.log('Supabase initialized:', supabaseUrl)
 }
