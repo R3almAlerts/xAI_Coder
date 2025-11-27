@@ -14,6 +14,7 @@ export function App() {
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
+  // User & State
   const [userName] = useState('Developer');
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentProjectName, setCurrentProjectName] = useState('Untitled Project');
@@ -23,17 +24,22 @@ export function App() {
   const [globalLoading, setGlobalLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
 
+  // Determine active view for sidebar highlighting
   const currentView = location.pathname.startsWith('/chat/')
     ? 'chat'
     : location.pathname === '/settings'
     ? 'settings'
     : 'home';
 
+  // Load initial data
   useEffect(() => {
     const loadData = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
+        if (!user) {
+          navigate('/login');
+          return;
+        }
 
         const [projRes, convRes] = await Promise.all([
           supabase.from('projects').select('*').order('updated_at', { ascending: false }),
@@ -43,25 +49,28 @@ export function App() {
         setProjects(projRes.data || []);
         setConversations(convRes.data || []);
 
+        // Auto-select first project if exists
         if (!currentProjectId && projRes.data?.length) {
-          setCurrentProjectId(projRes.data[0].id);
-          setCurrentProjectName(projRes.data[0].title);
+          const first = projRes.data[0];
+          setCurrentProjectId(first.id);
+          setCurrentProjectName(first.title);
         }
       } catch (err) {
-        console.error('Load failed:', err);
+        console.error('Failed to load data:', err);
       } finally {
         setGlobalLoading(false);
       }
     };
 
     loadData();
-  }, []);
+  }, [navigate]);
 
+  // Handlers
   const handleSelectProject = (id: string) => {
-    const p = projects.find(p => p.id === id);
-    if (p) {
+    const project = projects.find(p => p.id === id);
+    if (project) {
       setCurrentProjectId(id);
-      setCurrentProjectName(p.title);
+      setCurrentProjectName(project.title);
       setCurrentConvId(null);
     }
   };
@@ -72,12 +81,13 @@ export function App() {
   };
 
   const handleCreateProject = async () => {
-    const title = prompt('Project name:') || 'New Project';
+    const title = prompt('Project name:', 'New Project') || 'New Project';
     const { data } = await supabase
       .from('projects')
       .insert({ title })
       .select()
       .single();
+
     if (data) {
       setProjects(p => [data, ...p]);
       handleSelectProject(data.id);
@@ -86,11 +96,13 @@ export function App() {
 
   const handleCreateConversation = async () => {
     if (!currentProjectId) return;
+
     const { data } = await supabase
       .from('conversations')
       .insert({ title: 'New Chat', project_id: currentProjectId })
       .select()
       .single();
+
     if (data) {
       setConversations(c => [data, ...c]);
       handleSelectConversation(data.id);
@@ -102,6 +114,7 @@ export function App() {
     navigate('/login');
   };
 
+  // Loading screen
   if (globalLoading || settingsLoading) {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center">
@@ -113,11 +126,14 @@ export function App() {
     );
   }
 
-  if (showSettings) return <SettingsPage />;
+  // Settings page
+  if (showSettings) {
+    return <SettingsPage />;
+  }
 
   return (
     <div className="h-screen flex bg-gray-50">
-      {/* Permanent Left Sidebar */}
+      {/* Main Left Sidebar */}
       <NavigationMenu
         currentView={currentView}
         onOpenSettings={() => setShowSettings(true)}
@@ -125,7 +141,7 @@ export function App() {
         userName={userName}
       />
 
-      {/* Secondary Sidebar — Projects & Chats */}
+      {/* Projects & Conversations Sidebar */}
       <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
         <HierarchicalSidebar
           currentProjectId={currentProjectId}
@@ -139,6 +155,10 @@ export function App() {
           onDeleteConv={async (id) => {
             await supabase.from('conversations').delete().eq('id', id);
             setConversations(c => c.filter(x => x.id !== id));
+            if (currentConvId === id) {
+              setCurrentConvId(null);
+              navigate('/');
+            }
           }}
           onUpdateTitle={async (id, title, isProject) => {
             const table = isProject ? 'projects' : 'conversations';
@@ -153,28 +173,32 @@ export function App() {
         />
       </aside>
 
-      {/* Main Content — Ready for Chat */}
-      <main className="flex-1 bg-white flex items-center justify-center">
+      {/* Main Content Area */}
+      <main className="flex-1 bg-white overflow-hidden flex items-center justify-center">
         {location.pathname.startsWith('/chat/') ? (
-          <div className="text-center max-w-lg">
-            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-32 h-32 mx-auto mb-8" />
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              Grok-Powered Chat Interface
+          <div className="text-center max-w-2xl px-8">
+            <div className="bg-gradient-to-br from-blue-500 to-cyan-500 w-32 h-32 rounded-3xl mx-auto mb-8 shadow-2xl" />
+            <h1 className="text-5xl font-bold text-gray-900 mb-4">
+              Grok-Powered Chat
             </h1>
-            <p className="text-xl text-gray-600">
-              Streaming • Markdown • Code Execution • File Uploads
+            <p className="text-2xl text-gray-600 mb-2">
+              Streaming • Real-time Code • File Uploads • Markdown
             </p>
-            <p className="text-sm text-gray-500 mt-8">
-              Ready when you are. Just say the word.
+            <p className="text-lg text-gray-500">
+              Ready to build the future.
             </p>
           </div>
         ) : (
           <div className="text-center text-gray-400">
-            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-24 h-24 mx-auto mb-6" />
-            <p className="text-2xl font-medium">Select a project or start a new chat</p>
+            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-32 h-32 mx-auto mb-8" />
+            <h2 className="text-3xl font-semibold mb-2">Welcome to xAI Coder</h2>
+            <p className="text-xl">Select a project or start a new chat</p>
           </div>
         )}
       </main>
+
+      {/* Error Toast */}
+      {/* Add your error toast here if needed */}
     </div>
   );
 }
