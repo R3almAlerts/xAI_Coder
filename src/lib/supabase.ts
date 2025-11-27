@@ -5,7 +5,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
 // === Validation ===
-if (!supUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables!');
   console.error('Please create .env file with:');
   console.error('VITE_SUPABASE_URL=your-url');
@@ -14,14 +14,14 @@ if (!supUrl || !supabaseAnonKey) {
 }
 
 // === Client ===
-export const supabase = createClient(supUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // === Get Current User ID — throws if not authenticated ===
 export const getUserId = async (): Promise<string> => {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data?.user?.id) {
-    console.warn('No authenticated user found:', error:', error);
+    console.warn('No authenticated user found:', error);
     throw new Error('User not authenticated. Please sign in.');
   }
 
@@ -74,5 +74,5 @@ export default supabase;
 
 // === Debug (dev only) ===
 if (import.meta.env.DEV) {
-  console.log('Supabase client initialized:', supUrl);
+  console.log('Supabase client initialized:', supabaseUrl);
 }
