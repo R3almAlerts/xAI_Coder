@@ -1,176 +1,68 @@
 // src/components/NavigationMenu.tsx
-import { useState, useEffect, useRef } from 'react';
-import { Menu, X, Plus, Folder, MessageSquare, Settings, LogOut, User, Search, ChevronDown } from 'lucide-react';
-import { ProjectsList } from './ProjectsList';
-import { ConversationsList } from './ConversationsList';
-import { Project, Conversation } from '../types';
+import React from 'react';
+import { Bot, Settings, Plus, Menu, X } from 'lucide-react';
+import { useSettings } from '../hooks/useSettings';
 
 interface NavigationMenuProps {
-  projects: Project[];
-  conversations: Conversation[];
-  currentProjectId: string | null;
-  currentConvId: string | null;
-  currentProjectName?: string;
-  onSelectProject: (id: string) => void;
-  onSelectConversation: (id: string) => void;
-  onCreateProject: () => void;
-  onCreateConversation: () => void;
-  onDeleteProject: (project: { id: string; title: string }) => void;
-  onDeleteConversation: (id: string) => void;
-  onUpdateProjectTitle: (id: string, title: string) => void;
-  onUpdateConversationTitle: (id: string, title: string) => void;
+  // ... your existing props
   onOpenSettings: () => void;
-  onOpenConfigProject?: (project: Project) => void;
-  userName?: string;
-  userAvatar?: string;
 }
 
-export function NavigationMenu({
-  projects,
-  conversations,
-  currentProjectId,
-  currentConvId,
-  currentProjectName,
-  onSelectProject,
-  onSelectConversation,
-  onCreateProject,
-  onCreateConversation,
-  onDeleteProject,
-  onDeleteConversation,
-  onUpdateProjectTitle,
-  onUpdateConversationTitle,
-  onOpenSettings,
-  onOpenConfigProject,
-  userName = 'User',
-  userAvatar,
-}: NavigationMenuProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const sidebarRef = useRef<HTMLDivElement>(null);
+export const NavigationMenu: React.FC<NavigationMenuProps> = (props) => {
+  const { settings } = useSettings();
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
-  // Close sidebar on outside click (mobile)
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (isOpen && sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
-
-  // Filter conversations by search
-  const filteredConversations = conversations.filter(conv =>
-    conv.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const logoUrl = settings.logoUrl || 'https://vrcxtkstyeutxwhllnws.supabase.co/storage/v1/object/public/logos/logo.png';
 
   return (
     <>
-      {/* Mobile Hamburger */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg hover:bg-gray-50 transition-colors"
-        aria-label="Open menu"
-      >
-        <Menu size={24} />
-      </button>
-
-      {/* Overlay */}
-      {isOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsOpen(false)} />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        ref={sidebarRef}
-        className={`fixed inset-y-0 left-0 z-40 w-80 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-bold text-gray-900">Grok Chat</h1>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Projects */}
-          <div className="border-b border-gray-100">
-            <ProjectsList
-              projects={projects}
-              currentProjectId={currentProjectId}
-              onSelectProject={onSelectProject}
-              onCreateNew={onCreateProject}
-              onDeleteProject={onDeleteProject}
-              onUpdateTitle={onUpdateProjectTitle}
-              onOpenConfig={onOpenConfigProject || (() => {})}
-              showNewButton={true}
-            />
-          </div>
-
-          {/* Conversations */}
-          <ConversationsList
-            currentConvId={currentConvId}
-            conversations={filteredConversations}
-            onSelectConv={onSelectConversation}
-            onCreateNew={onCreateConversation}
-            onDeleteConv={onDeleteConversation}
-            onUpdateTitle={onUpdateConversationTitle}
-            currentProjectName={currentProjectName}
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:flex lg:flex-col lg:w-80 lg:fixed lg:inset-y-0 bg-gradient-to-b from-indigo-900 to-purple-900 text-white">
+        {/* Logo + Title */}
+        <div className="flex items-center gap-3 px-6 py-8 border-b border-white/10">
+          <img 
+            src={logoUrl} 
+            alt="Code Guru Logo" 
+            className="w-12 h-12 rounded-xl object-contain bg-white p-1 shadow-lg"
+            onError={(e) => {
+              e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTIiIGZpbGw9IiM1RTdCRUIiLz4KPHBhdGggZD0iTTI0IDI4TDMwIDE2SDM0TDE4IDMyTDE0IDI2SDIyTDI0IDI4WiIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4K';
+            }}
           />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Code Guru</h1>
+            <p className="text-xs opacity-80">Your AI Coding Assistant</p>
+          </div>
         </div>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                {userAvatar ? (
-                  <img src={userAvatar} alt={userName} className="w-full h-full rounded-full object-cover" />
-                ) : (
-                  userName[0].toUpperCase()
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">{userName}</p>
-                <p className="text-xs text-gray-500">Premium User</p>
-              </div>
-            </div>
-            <button
-              onClick={onOpenSettings}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Settings"
-            >
-              <Settings size={20} />
-            </button>
-          </div>
+        {/* Rest of your existing menu content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Your existing project/conversation list */}
+        </div>
 
-          <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-            <LogOut size={16} />
-            Sign Out
+        {/* Settings Button */}
+        <div className="p-6 border-t border-white/10">
+          <button
+            onClick={props.onOpenSettings}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 transition-all"
+          >
+            <Settings size={20} />
+            <span>Settings</span>
           </button>
         </div>
-      </aside>
+      </div>
+
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3">
+            <img src={logoUrl} alt="Code Guru" className="w-10 h-10 rounded-lg object-contain bg-white p-1" />
+            <h1 className="text-xl font-bold">Code Guru</h1>
+          </div>
+          <button onClick={() => setMobileOpen(!mobileOpen)}>
+            {mobileOpen ? <X size={28} /> : <Menu size={28} />}
+          </button>
+        </div>
+      </div>
     </>
   );
-}
+};

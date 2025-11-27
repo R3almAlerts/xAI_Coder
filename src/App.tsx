@@ -16,7 +16,6 @@ function App() {
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
-  // ── Core state ─────────────────────────────────────
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,30 +27,27 @@ function App() {
   const [currentProjectName, setCurrentProjectName] = useState('');
 
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
-  const [globalLoading, setGlobalLoading] = useState(true);   // ← controls spinner
+  const [globalLoading, setGlobalLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ── Auto-scroll ─────────────────────────────────────
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ── Initial data load (with timeout fallback) ───────
+  // Initial data load with timeout fallback
   useEffect(() => {
     let cancelled = false;
 
     const loadInitialData = async () => {
       try {
-        // 8-second safety timeout
         const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Initial load timeout')), 8000)
+          setTimeout(() => reject(new Error('Timeout')), 8000)
         );
 
-        const dataPromise = (async () => {
-          // getUserId now has its own fallback inside supabase.ts → never hangs
+        const load = async () => {
           const userId = await getUserId();
 
-          // Load projects
           const { data: projectData } = await supabase
             .from('projects')
             .select('*')
@@ -62,31 +58,26 @@ function App() {
 
           setProjects(projectData || []);
 
-          // Choose first project if any
           if (projectData && projectData.length > 0) {
             const first = projectData[0];
             setCurrentProjectId(first.id);
             setCurrentProjectName(first.title);
           }
-        })();
+        };
 
-        await Promise.race([dataPromise, timeout]);
-      } catch (err: any) {
-        console.warn('Initial load failed or timed out:', err.message);
-        // Even on error we stop the spinner – the UI will show an empty state
+        await Promise.race([load(), timeout]);
+      } catch (err) {
+        console.warn('Initial load slow or failed, continuing anyway:', err);
       } finally {
         if (!cancelled) setGlobalLoading(false);
       }
     };
 
     loadInitialData();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // ── Load conversations when project changes ───────
+  // Load conversations when project changes
   useEffect(() => {
     if (!currentProjectId) return;
 
@@ -106,7 +97,7 @@ function App() {
     loadConvs();
   }, [currentProjectId]);
 
-  // ── Load messages when conversation changes ───────
+  // Load messages when conversation changes
   useEffect(() => {
     if (!currentConvId) return;
 
@@ -122,7 +113,7 @@ function App() {
     loadMsgs();
   }, [currentConvId]);
 
-  // ── Send message ─────────────────────────────────────
+  // Send message to Grok
   const sendMessage = async (content: string, attachments?: any[]) => {
     if (!settings.apiKey || isSending) return;
 
@@ -162,7 +153,7 @@ function App() {
     }
   };
 
-  // ── Handlers for sidebar actions ─────────────────────
+  // Handlers
   const handleSelectProject = (id: string) => {
     setCurrentProjectId(id);
     const p = projects.find(x => x.id === id);
@@ -200,21 +191,25 @@ function App() {
     }
   };
 
-  // ── Settings page route ─────────────────────────────
+  // Settings route
   if (location.pathname === '/settings') return <SettingsPage />;
 
-  // ── Global spinner (only while we really have nothing) ─────
+  // Global loading spinner
   if (globalLoading || settingsLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
+        <div className="text-center">
+          <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto mb-6" />
+          <p className="text-xl font-medium text-gray-700">Launching Code Guru...</p>
+        </div>
       </div>
     );
   }
 
-  // ── Main UI ───────────────────────────────────────
   return (
     <div className="flex h-screen bg-gray-50">
+
+      {/* Navigation Menu with Logo */}
       <NavigationMenu
         projects={projects}
         conversations={conversations}
@@ -225,48 +220,26 @@ function App() {
         onSelectConversation={setCurrentConvId}
         onCreateProject={handleCreateProject}
         onCreateConversation={handleCreateConversation}
-        onDeleteProject={async (proj) => {
-          if (!confirm(`Delete "${proj.title}" and all its data?`)) return;
-          await supabase.from('conversations').delete().eq('project_id', proj.id);
-          await supabase.from('projects').delete().eq('id', proj.id);
-          setProjects(p => p.filter(x => x.id !== proj.id));
-          if (currentProjectId === proj.id) {
-            setCurrentProjectId(projects[0]?.id || null);
-            setCurrentConvId(null);
-          }
-        }}
-        onDeleteConversation={async (id) => {
-          await supabase.from('messages').delete().eq('conversation_id', id);
-          await supabase.from('conversations').delete().eq('id', id);
-          setConversations(c => c.filter(x => x.id !== id));
-          if (currentConvId === id) setCurrentConvId(conversations[0]?.id || null);
-        }}
-        onUpdateProjectTitle={async (id, title) => {
-          await supabase.from('projects').update({ title }).eq('id', id);
-          setProjects(p => p.map(x => (x.id === id ? { ...x, title } : x)));
-          if (currentProjectId === id) setCurrentProjectName(title);
-        }}
-        onUpdateConversationTitle={async (id, title) => {
-          await supabase.from('conversations').update({ title }).eq('id', id);
-          setConversations(c => c.map(x => (x.id === id ? { ...x, title } : x)));
-        }}
         onOpenSettings={() => navigate('/settings')}
         userName="You"
       />
 
-      {/* Chat area */}
-      <div className="flex-1 flex flex-col ml-0 lg:ml-80">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col lg:ml-80">
+
         {/* Header */}
-        <div className="bg-white border-b px-6 py-4 flex justify-between items-center">
+        <div className="bg-white border-b px-6 py-5 flex justify-between items-center shadow-sm">
           <div>
-            <h2 className="text-xl font-semibold">
+            <h2 className="text-2xl font-bold text-gray-800">
               {conversations.find(c => c.id === currentConvId)?.title || 'New Chat'}
             </h2>
-            {currentProjectName && <p className="text-sm text-gray-500">in {currentProjectName}</p>}
+            <p className="text-sm text-gray-500">
+              {currentProjectName ? `in ${currentProjectName}` : 'Code Guru – Your AI Coding Assistant'}
+            </p>
           </div>
           <button
             onClick={() => setIsModelSelectorOpen(true)}
-            className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 font-medium rounded-xl hover:from-indigo-200 hover:to-purple-200 transition-all"
           >
             {settings.model === 'auto' ? 'Auto' : settings.model}
           </button>
@@ -275,8 +248,12 @@ function App() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-8">
           {messages.length === 0 ? (
-            <div className="text-center text-gray-500 mt-20">
-              <p className="text-lg">Start a conversation</p>
+            <div className="text-center mt-32">
+              <div className="bg-gradient-to-br from-indigo-100 to-purple-100 w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center">
+                <Bot size={48} className="text-indigo-600" />
+              </div>
+              <h1 className="text-4xl font-bold text-gray-800 mb-4">Welcome to Code Guru</h1>
+              <p className="text-xl text-gray-600">Ask me anything about code, debugging, or architecture.</p>
             </div>
           ) : (
             <div className="max-w-4xl mx-auto space-y-6">
@@ -285,10 +262,10 @@ function App() {
               ))}
               {isSending && (
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
                   </div>
-                  <div className="bg-gray-100 rounded-2xl px-4 py-3">thinking…</div>
+                  <div className="bg-gray-100 rounded-2xl px-5 py-3 text-gray-700">Thinking...</div>
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -297,7 +274,7 @@ function App() {
         </div>
 
         {/* Input */}
-        <div className="border-t bg-white px-6 py-4">
+        <div className="border-t bg-white px-6 py-5">
           <ChatInput
             onSend={sendMessage}
             disabled={isSending || !currentConvId}
@@ -307,17 +284,18 @@ function App() {
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Model Selector Modal */}
       <ModelSelectorModal
         isOpen={isModelSelectorOpen}
         onClose={() => setIsModelSelectorOpen(false)}
         currentModel={settings.model}
-        onSelectModel={model => useSettings.getState().setSettings({ model })}
+        onSelectModel={(model) => useSettings.getState().setSettings({ model })}
       />
 
+      {/* Error Toast */}
       {error && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg flex items-center gap-2">
-          <AlertCircle size={20} />
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
+          <AlertCircle size={24} />
           {error}
         </div>
       )}
