@@ -17,9 +17,10 @@ interface SettingsStore {
   loadSettings: () => Promise<void>
 }
 
+// Fallback defaults — uses your real xAI key if nothing saved yet
 const DEFAULT_SETTINGS: Settings = {
-  apiKey: '',
-  baseUrl: 'https://api.x.ai',
+  apiKey: import.meta.env.VITE_XAI_API_KEY || '',
+  baseUrl: import.meta.env.VITE_XAI_BASE_URL || 'https://api.x.ai',
   model: 'auto',
   logoUrl: '',
 }
@@ -29,6 +30,7 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   isLoading: true,
   isInitialized: false,
 
+  // Save to Supabase + update local state
   setSettings: async (updates) => {
     const updated = { ...get().settings, ...updates }
     set({ settings: updated })
@@ -36,15 +38,20 @@ export const useSettings = create<SettingsStore>((set, get) => ({
     try {
       await supabase
         .from('settings')
-        .upsert({ id: 'global', ...updated }, { onConflict: 'id' })
+        .upsert(
+          { id: 'global', ...updated },
+          { onConflict: 'id' }
+        )
     } catch (error) {
-      console.error('Failed to save settings:', error)
-      // Still update locally — user experience matters
+      console.error('Failed to save settings to Supabase:', error)
+      // Still keep local update — UX first
     }
   },
 
+  // Load from Supabase (only once)
   loadSettings: async () => {
-    if (get().isInitialized) return
+    const state = get()
+    if (state.isInitialized) return
 
     set({ isLoading: true })
 
@@ -55,15 +62,20 @@ export const useSettings = create<SettingsStore>((set, get) => ({
         .eq('id', 'global')
         .maybeSingle()
 
-      if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned → normal for first-time users
+        throw error
+      }
+
+      const loaded = data || DEFAULT_SETTINGS
 
       set({
-        settings: data || DEFAULT_SETTINGS,
+        settings: loaded,
         isLoading: false,
         isInitialized: true,
       })
     } catch (err) {
-      console.error('Settings load failed:', err)
+      console.error('Failed to load settings, using defaults:', err)
       set({
         settings: DEFAULT_SETTINGS,
         isLoading: false,
@@ -73,6 +85,5 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   },
 }))
 
-// Auto-load settings when app starts
-// This is safe to call multiple times
+// Auto-load on app start (safe to call multiple times)
 useSettings.getState().loadSettings()
