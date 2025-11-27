@@ -4,17 +4,17 @@ import {
   Loader2, 
   AlertCircle, 
   FolderOpen,
+  Folder as FolderClosed,
   FileText,
-  Folder,
+  FileCode,
+  FileJson,
+  Package,
   ChevronRight,
   ChevronDown,
   FilePlus,
   FolderPlus,
   Save,
-  Check,
-  FileCode,
-  FileJson,
-  Package
+  Check
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -43,7 +43,7 @@ export function App() {
   const [fileContent, setFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [creatingFileIn, setCreatingFileIn] = useState<string>('');
+  const [creatingFileIn, setCreatingFileIn] = useState<string>(''); // Tracks active folder
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
@@ -56,10 +56,7 @@ export function App() {
 
     const { data, error } = await supabase.storage
       .from('project-files')
-      .list(`${currentProjectId}/`, {
-        limit: 1000,
-        offset: 0,
-      });
+      .list(`${currentProjectId}/`, { limit: 1000, offset: 0 });
 
     if (error) {
       console.error('Failed to load files:', error);
@@ -82,14 +79,12 @@ export function App() {
           currentPath += (currentPath ? '/' : '') + part;
 
           if (i === parts.length - 1) {
-            const node: FileNode = {
+            parent.push({
               id: currentPath,
               name: part,
               type: 'file',
               path: currentPath,
-            };
-            parent.push(node);
-            map.set(currentPath, node);
+            });
           } else {
             let folder = map.get(currentPath);
             if (!folder) {
@@ -113,14 +108,13 @@ export function App() {
         if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-      nodes.forEach(node => node.children && sortNodes(node.children));
+      nodes.forEach(n => n.children && sortNodes(n.children));
     };
 
     sortNodes(root);
     setFiles(root);
   };
 
-  // Initial project load
   useEffect(() => {
     const init = async () => {
       try {
@@ -136,7 +130,7 @@ export function App() {
           setCurrentProjectName(data[0].title);
         }
       } catch (err) {
-        console.error('Failed to load projects:', err);
+        console.error(err);
       } finally {
         setGlobalLoading(false);
       }
@@ -148,15 +142,15 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // FIXED: Create file or folder (no more Blob errors!)
+  // Create file/folder in correct location
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
     const name = prompt(`Enter ${type === 'file' ? 'file' : 'folder'} name:`);
     if (!name) return;
 
-    const prefix = creatingFileIn || '';
-    const fullPath = prefix ? `${prefix}/${name}` : name;
+    const parentPath = creatingFileIn || '';
+    const fullPath = parentPath ? `${parentPath}/${name}` : name;
     const storagePath = `${currentProjectId}/${fullPath}${type === 'folder' ? '/.keep' : ''}`;
 
     try {
@@ -164,50 +158,33 @@ export function App() {
 
       if (type === 'file') {
         if (name.endsWith('.tsx')) {
-          content = `import React from 'react';
-
-export default function ${name.replace('.tsx', '')}() {
-  return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold">Hello from ${name.replace('.tsx', '')}!</h1>
-    </div>
-  );
-}`;
-        } else if (name.endsWith('.ts')) {
+          content = `import React from 'react';\n\nexport default function ${name.replace('.tsx', '')}() {\n  return <div className="p-8">Hello from ${name.replace('.tsx', '')}!</div>\n}`;
+        else if (name.endsWith('.ts'))
           content = `console.log('Hello from ${name}');\n`;
-        } else if (name.endsWith('.json')) {
-          content = JSON.stringify({ message: `Hello from ${name}` }, null, 2);
-        } else {
-          content = '';
-        }
+        else if (name.endsWith('.json'))
+          content = JSON.stringify({ name }, null, 2);
       } else {
-        // Folder: use proper empty Blob
         content = new Blob([''], { type: 'application/octet-stream' });
       }
 
       const { error } = await supabase.storage
         .from('project-files')
-        .upload(storagePath, content, {
-          upsert: true,
-          contentType: type === 'file' ? 'text/plain' : undefined
-        });
+        .upload(storagePath, content, { upsert: true });
 
       if (error) throw error;
 
       await loadFiles();
 
-      if (prefix) {
-        setExpandedFolders(prev => new Set(prev).add(prefix));
+      if (parentPath) {
+        setExpandedFolders(prev => new Set(prev).add(parentPath));
       }
 
       alert(`${type === 'file' ? 'File' : 'Folder'} created: ${name}`);
     } catch (err: any) {
-      console.error('Create failed:', err);
-      setError(`Failed to create ${type}: ${err.message}`);
+      setError(`Failed: ${err.message}`);
     }
   };
 
-  // Save file
   const saveFile = async () => {
     if (!selectedFile || selectedFile.type === 'folder' || !currentProjectId) return;
     setIsSaving(true);
@@ -221,13 +198,12 @@ export default function ${name.replace('.tsx', '')}() {
       if (error) throw error;
       setLastSaved(new Date());
     } catch (err: any) {
-      setError('Save failed: ' + err.message);
+      setError('Save failed');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Load file content
   useEffect(() => {
     if (!selectedFile || selectedFile.type === 'folder') {
       setFileContent('');
@@ -252,40 +228,62 @@ export default function ${name.replace('.tsx', '')}() {
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase();
-    if (['ts', 'tsx', 'js', 'jsx'].includes(ext || '')) return <FileCode className="w-4 h-4 text-blue-500" />;
-    if (ext === 'json') return <FileJson className="w-4 h-4 text-yellow-500" />;
-    if (name === 'package.json') return <Package className="w-4 h-4 text-red-500" />;
-    return <FileText className="w-4 h-4 text-gray-500" />;
+    if (['ts', 'tsx', 'js', 'jsx'].includes(ext || '')) 
+      return <FileCode className="w-4 h-4 text-blue-600" />;
+    if (ext === 'json') 
+      return <FileJson className="w-4 h-4 text-yellow-600" />;
+    if (name === 'package.json') 
+      return <Package className="w-4 h-4 text-red-600" />;
+    return <FileText className="w-4 h-4 text-gray-600" />;
   };
 
-  const renderFileTree = (nodes: FileNode[], level = 0) => {
+  const renderFileTree = (nodes: FileNode[], level = 0): JSX.Element[] => {
     return nodes.map(node => (
       <React.Fragment key={node.id}>
         <div
-          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer select-none text-sm ${
-            selectedFile?.id === node.id ? 'bg-indigo-100 text-indigo-700 font-medium' : ''
-          }`}
-          style={{ paddingLeft: `${level * 20 + 16}px` }}
+          className={`
+            group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer select-none text-sm
+            hover:bg-indigo-50 transition-colors
+            ${selectedFile?.id === node.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-gray-700'}
+            ${creatingFileIn === node.path ? 'bg-indigo-50 ring-2 ring-indigo-400' : ''}
+          `}
+          style={{ paddingLeft: `${level * 24 + 16}px` }}
           onClick={() => {
             if (node.type === 'folder') {
               toggleFolder(node.path);
-              setCreatingFileIn(node.path);
+              setCreatingFileIn(node.path); // Highlight & target this folder
             } else {
               setSelectedFile(node);
               setCreatingFileIn('');
             }
           }}
         >
+          {/* Folder Icon */}
           {node.type === 'folder' ? (
-            expandedFolders.has(node.path) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-          ) : <div className="w-4" />}
+            expandedFolders.has(node.path) ? 
+              <FolderOpen className="w-5 h-5 text-yellow-600" /> : 
+              <FolderClosed className="w-5 h-5 text-yellow-500" />
+          ) : (
+            <div className="w-5" />
+          )}
+
+          {/* Expand/Collapse Chevron */}
           {node.type === 'folder' ? (
-            <Folder className={expandedFolders.has(node.path) ? "w-4 h-4 text-yellow-600" : "w-4 h-4 text-yellow-500"} />
-          ) : getFileIcon(node.name)}
-          <span className="truncate">{node.name}</span>
+            expandedFolders.has(node.path) ? 
+              <ChevronDown className="w-4 h-4 text-gray-500" /> : 
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+          ) : (
+            getFileIcon(node.name)
+          )}
+
+          <span className="truncate flex-1">{node.name}</span>
         </div>
+
+        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
-          <div>{renderFileTree(node.children, level + 1)}</div>
+          <div className="border-l-2 border-gray-200 ml-6">
+            {renderFileTree(node.children, level + 1)}
+          </div>
         )}
       </React.Fragment>
     ));
@@ -296,7 +294,7 @@ export default function ${name.replace('.tsx', '')}() {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
         <Loader2 className="w-16 h-16 animate-spin text-indigo-600" />
-        <p className="ml-6 text-2xl font-medium text-gray-700">Launching Code Guru...</p>
+        <p className="ml-6 text-2xl font-medium">Launching Code Guru...</p>
       </div>
     );
   }
@@ -315,42 +313,46 @@ export default function ${name.replace('.tsx', '')}() {
       />
 
       <div className="flex-1 flex flex-col lg:ml-80">
-        <div className="bg-white border-b px-6 py-4 shadow-sm">
-          <h1 className="text-2xl font-bold text-gray-800">{currentProjectName || 'No Project Selected'}</h1>
+        <div className="bg-white border-b px-6 py-4 shadow-sm flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-800">
+            {currentProjectName || 'No Project Selected'}
+          </h1>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Explorer Sidebar */}
-          <div className="w-72 bg-white border-r border-gray-200 flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          {/* Explorer */}
+          <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
-              <div className="flex gap-1">
+              <div className="flex gap-2">
                 <button
                   onClick={() => createFileOrFolder('file')}
-                  className="p-1.5 hover:bg-gray-100 rounded transition"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
                   title="New File"
                 >
-                  <FilePlus className="w-5 h-5" />
+                  <FilePlus className="w-5 h-5 text-gray-600" />
                 </button>
                 <button
                   onClick={() => createFileOrFolder('folder')}
-                  className="p-1.5 hover:bg-gray-100 rounded transition"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
                   title="New Folder"
                 >
-                  <FolderPlus className="w-5 h-5" />
+                  <FolderPlus className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
               {files.length === 0 ? (
-                <div className="p-8 text-center text-gray-400">
-                  <FolderOpen className="w-12 h-12 mx-auto mb-4" />
-                  <p className="text-sm">No files yet</p>
-                  <p className="text-xs mt-2 text-gray-500">Click + to create</p>
+                <div className="p-12 text-center text-gray-400">
+                  <FolderOpen className="w-16 h-16 mx-auto mb-4 opacity-60" />
+                  <p className="font-medium">No files yet</p>
+                  <p className="text-sm mt-2">Click + to create a file or folder</p>
                 </div>
               ) : (
-                <div className="py-2">{renderFileTree(files)}</div>
+                <div className="py-3">
+                  {renderFileTree(files)}
+                </div>
               )}
             </div>
           </div>
@@ -359,36 +361,36 @@ export default function ${name.replace('.tsx', '')}() {
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {getFileIcon(selectedFile.name)}
                     <span className="font-medium text-gray-800">{selectedFile.name}</span>
-                    {isSaving && <Loader2 className="w-4 h-4 animate-spin text-gray-600" />}
+                    {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                     {lastSaved && !isSaving && <Check className="w-4 h-4 text-green-600" />}
                   </div>
                   <button
                     onClick={saveFile}
                     disabled={isSaving}
-                    className="px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
+                    className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2 text-sm font-medium"
                   >
                     <Save className="w-4 h-4" />
                     {isSaving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
                 <textarea
-                  className="flex-1 p-6 font-mono text-sm bg-gray-50 resize-none focus:outline-none"
+                  className="flex-1 p-8 font-mono text-sm bg-gray-50 resize-none focus:outline-none leading-relaxed"
                   value={fileContent}
-                  onChange={(e) => setFileContent(e.target.value)}
+                  onChange={e => setFileContent(e.target.value)}
                   spellCheck={false}
                   placeholder="// Start coding..."
                 />
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <FileText className="w-16 h-16 mx-auto mb-4" />
-                  <p className="text-lg font-medium">Select a file to edit</p>
-                  <p className="text-sm mt-2">or create a new one with the + button</p>
+              <div className="flex-1 flex items-center justify-center text-gray-400">
+                <div className="text-center">
+                  <FileText className="w-20 h-20 mx-auto mb-6 opacity-50" />
+                  <p className="text-xl font-medium">Select a file to edit</p>
+                  <p className="text-sm mt-3">or click + to create one</p>
                 </div>
               </div>
             )}
@@ -398,10 +400,10 @@ export default function ${name.replace('.tsx', '')}() {
 
       {/* Error Toast */}
       {error && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50 animate-pulse">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
           <AlertCircle className="w-6 h-6" />
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-4 text-xl font-bold">×</button>
+          <button onClick={() => setError(null)} className="ml-6 text-2xl">×</button>
         </div>
       )}
     </div>
