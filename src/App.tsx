@@ -19,7 +19,8 @@ import {
   Image,
   FileJson,
   Package,
-  Settings as SettingsIcon
+  Save,
+  Check
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -37,9 +38,9 @@ interface FileNode {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  children?: FileNode[];
+  path: string;
   content?: string;
-  projectId: string;
+  children?: FileNode[];
 }
 
 function App() {
@@ -47,7 +48,7 @@ function App() {
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
-  const [activeTab, setActiveTab] = useState<Tab>('files'); // default to files for demo
+  const [activeTab, setActiveTab] = useState<Tab>('files');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +62,14 @@ function App() {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
+  const [fileContent, setFileContent] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -127,43 +132,130 @@ function App() {
     load();
   }, [currentConvId]);
 
-  // Load files for current project
+  // Load files from Supabase Storage
   useEffect(() => {
     if (!currentProjectId) {
       setFiles([]);
       return;
     }
 
-    // Mock file structure (replace with Supabase later)
-    const mockFiles: FileNode[] = [
-      {
-        id: '1',
-        name: 'src',
-        type: 'folder',
-        projectId: currentProjectId,
-        children: [
-          { id: '2', name: 'App.tsx', type: 'file', content: '// Your code here', projectId: currentProjectId },
-          { id: '3', name: 'main.tsx', type: 'file', content: 'root.render(<App />)', projectId: currentProjectId },
-          {
-            id: '4',
-            name: 'components',
-            type: 'folder',
-            projectId: currentProjectId,
-            children: [
-              { id: '5', name: 'NavigationMenu.tsx', type: 'file', projectId: currentProjectId },
-              { id: '6', name: 'ChatInput.tsx', type: 'file', projectId: currentProjectId },
-            ]
-          }
-        ]
-      },
-      { id: '7', name: 'package.json', type: 'file', projectId: currentProjectId },
-      { id: '8', name: 'README.md', type: 'file', projectId: currentProjectId },
-      { id: '9', name: 'public', type: 'folder', projectId: currentProjectId, children: [] }
-    ];
+    const loadFiles = async () => {
+      const { data, error } = await supabase.storage
+        .from('project-files')
+        .list(`${currentProjectId}/`, { limit: 1000, deep: true });
 
-    setFiles(mockFiles);
-    setExpandedFolders(new Set(['1', '4'])); // auto-expand src and components
+      if (error) {
+        console.error('Error loading files:', error);
+        return;
+      }
+
+      const buildTree = (items: any[]): FileNode[] => {
+        const root: FileNode[] = [];
+        const map = new Map<string, FileNode>();
+
+        items.forEach(item => {
+          const fullPath = item.name;
+          const parts = fullPath.split('/');
+          let currentPath = '';
+          let parent: FileNode[] = root;
+
+          parts.forEach((part, i) => {
+            if (!part || part === '.') return;
+            currentPath += (currentPath ? '/' : '') + part;
+
+            if (i === parts.length - 1) {
+              // File
+              if (!item.metadata) {
+                const node: FileNode = {
+                  id: currentPath,
+                  name: part,
+                  type: 'file',
+                  path: currentPath,
+                };
+                parent.push(node);
+                map.set(currentPath, node);
+              }
+            } else {
+              // Folder
+              let folder = map.get(currentPath);
+              if (!folder) {
+                folder = {
+                  id: currentPath,
+                  name: part,
+                  type: 'folder',
+                  path: currentPath,
+                  children: [],
+                };
+                parent.push(folder);
+                map.set(currentPath, folder);
+              }
+              parent = folder.children!;
+            }
+          });
+        });
+
+        return root;
+      };
+
+      const tree = buildTree(data || []);
+      setFiles(tree);
+      setExpandedFolders(new Set(['src', 'src/components']));
+    };
+
+    loadFiles();
   }, [currentProjectId]);
+
+  // Save file to Supabase
+  const saveFile = async () => {
+    if (!selectedFile || !currentProjectId || selectedFile.type === 'folder') return;
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.storage
+        .from('project-files')
+        .upsert([
+          {
+            bucket_id: 'project-files',
+            name: `${currentProjectId}/${selectedFile.path}`,
+            content: fileContent,
+            owner: (await getUserId()),
+          }
+        ], { upsert: true });
+
+      if (error) throw error;
+
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Save failed:', err);
+      setError('Failed to save file');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Load file content when selected
+  useEffect(() => {
+    if (!selectedFile || selectedFile.type === 'folder') {
+      setFileContent('');
+      return;
+    }
+
+    const loadContent = async () => {
+      const { data, error } = await supabase.storage
+        .from('project-files')
+        .download(`${currentProjectId}/${selectedFile.path}`);
+
+      if (error || !data) {
+        setFileContent('// File not found or empty');
+        return;
+      }
+
+      const text = await data.text();
+      setFileContent(text);
+    };
+
+    loadContent();
+  }, [selectedFile, currentProjectId]);
 
   const toggleFolder = (id: string) => {
     setExpandedFolders(prev => {
@@ -176,10 +268,10 @@ function App() {
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase();
-    if (ext === 'tsx' || ext === 'ts' || ext === 'js' || ext === 'jsx') return <FileCode size={16} className="text-blue-500" />;
+    if (['ts', 'tsx', 'js', 'jsx'].includes(ext || '')) return <FileCode size={16} className="text-blue-500" />;
     if (ext === 'json') return <FileJson size={16} className="text-yellow-500" />;
     if (ext === 'md') return <FileText size={16} className="text-gray-600" />;
-    if (ext === 'png' || ext === 'jpg' || ext === 'svg') return <Image size={16} className="text-green-500" />;
+    if (['png', 'jpg', 'svg', 'gif'].includes(ext || '')) return <Image size={16} className="text-green-500" />;
     if (name === 'package.json') return <Package size={16} className="text-red-500" />;
     return <FileText size={16} className="text-gray-500" />;
   };
@@ -309,7 +401,7 @@ function App() {
           setCurrentProjectId(id); 
           const p = projects.find(x => x.id === id); 
           setCurrentProjectName(p?.title || ''); 
-          setActiveTab('files'); // auto-open files tab when switching project
+          setActiveTab('files');
         }}
         onSelectConversation={setCurrentConvId}
         onCreateProject={handleCreateProject}
@@ -318,10 +410,7 @@ function App() {
         userName="You"
       />
 
-      {/* Right Panel */}
       <div className="flex-1 flex flex-col lg:ml-80">
-
-        {/* Tab Bar */}
         <div className="bg-white border-b border-gray-200 flex items-center px-2 py-2">
           <div className="flex gap-1">
             <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={<MessageSquare size={18} />} label="Chat" />
@@ -339,10 +428,7 @@ function App() {
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="flex-1 overflow-hidden bg-gray-50">
-
-          {/* CHAT TAB */}
           {activeTab === 'chat' && (
             <div className="flex flex-col h-full">
               <div className="bg-white border-b px-6 py-4 shadow-sm">
@@ -392,10 +478,9 @@ function App() {
             </div>
           )}
 
-          {/* FILES TAB - FULLY WORKING */}
+          {/* FILES TAB - NOW WITH SUPABASE SAVING */}
           {activeTab === 'files' && (
             <div className="flex h-full">
-              {/* File Tree */}
               <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
@@ -407,7 +492,7 @@ function App() {
                   {files.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       <FolderOpen size={48} className="mx-auto mb-2" />
-                      <p className="text-sm">No files</p>
+                      <p className="text-sm">No files yet</p>
                     </div>
                   ) : (
                     renderFileTree(files)
@@ -415,22 +500,30 @@ function App() {
                 </div>
               </div>
 
-              {/* Editor */}
               <div className="flex-1 bg-white flex flex-col">
-                {selectedFile ? (
+                {selectedFile && selectedFile.type === 'file' ? (
                   <>
                     <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {getFileIcon(selectedFile.name)}
                         <span className="font-medium text-sm">{selectedFile.name}</span>
+                        {isSaving && <Loader2 size={14} className="animate-spin text-gray-500" />}
+                        {lastSaved && !isSaving && <Check size={14} className="text-green-500" />}
                       </div>
-                      <button className="p-1 hover:bg-gray-100 rounded">
-                        <Trash2 size={16} className="text-red-500" />
+                      <button
+                        onClick={saveFile}
+                        disabled={isSaving}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        <Save size={14} />
+                        {isSaving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
                     <textarea
+                      ref={editorRef}
                       className="flex-1 p-4 font-mono text-sm bg-gray-50 resize-none focus:outline-none"
-                      defaultValue={selectedFile.content || '// Click a file to edit'}
+                      value={fileContent}
+                      onChange={(e) => setFileContent(e.target.value)}
                       spellCheck={false}
                     />
                   </>
@@ -446,7 +539,6 @@ function App() {
             </div>
           )}
 
-          {/* TERMINAL & PREVIEW unchanged */}
           {activeTab === 'terminal' && (
             <div className="h-full flex items-center justify-center bg-gray-900 text-green-400 font-mono">
               <div className="text-center">
