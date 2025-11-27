@@ -1,97 +1,54 @@
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
-import {
-  Loader2,
-  AlertCircle,
-  FolderOpen,
-  FileText,
-  FileCode,
-  Save,
-  Check,
-  MessageSquare,
-} from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase, getUserId } from './lib/supabase';
+import { supabase } from './lib/supabase';
 import { NavigationMenu } from './components/NavigationMenu';
 import { SettingsPage } from './components/SettingsPage';
 import { HierarchicalSidebar } from './components/HierarchicalSidebar';
 import { useSettings } from './hooks/useSettings';
 import { Project, Conversation } from './types';
 
-interface FileNode {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  path: string;
-  children?: FileNode[];
-}
-
 export function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings, isLoading: settingsLoading } = useSettings();
 
-  // Global State
   const [userName] = useState('Developer');
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentProjectName, setCurrentProjectName] = useState('Untitled Project');
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [files, setFiles] = useState<FileNode[]>([]);
-  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Determine current view for sidebar highlight
   const currentView = location.pathname.startsWith('/chat/')
     ? 'chat'
     : location.pathname === '/settings'
     ? 'settings'
     : 'home';
 
-  // Load projects and conversations
   useEffect(() => {
     const loadData = async () => {
       try {
-        const userId = await getUserId();
-        if (!userId) throw new Error('Not authenticated');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
 
-        let projectData: Project[] = [];
-        try {
-          const { data } = await supabase
-            .from('projects')
-            .select('*')
-            .order('updated_at', { ascending: false });
-          projectData = data || [];
-        } catch (err) {
-          console.warn('Projects load failed:', err);
-        }
+        const [projRes, convRes] = await Promise.all([
+          supabase.from('projects').select('*').order('updated_at', { ascending: false }),
+          supabase.from('conversations').select('*').order('updated_at', { ascending: false })
+        ]);
 
-        let convData: Conversation[] = [];
-        try {
-          const { data } = await supabase
-            .from('conversations')
-            .select('*')
-            .order('updated_at', { ascending: false });
-          convData = data || [];
-        } catch (err) {
-          console.warn('Conversations load failed:', err);
-        }
+        setProjects(projRes.data || []);
+        setConversations(convRes.data || []);
 
-        setProjects(projectData);
-        setConversations(convData);
-
-        if (!currentProjectId && projectData.length > 0) {
-          handleSelectProject(projectData[0].id);
+        if (!currentProjectId && projRes.data?.length) {
+          setCurrentProjectId(projRes.data[0].id);
+          setCurrentProjectName(projRes.data[0].title);
         }
       } catch (err) {
-        console.error('Global data load error:', err);
-        setError('Failed to load workspace');
+        console.error('Load failed:', err);
       } finally {
         setGlobalLoading(false);
       }
@@ -100,127 +57,49 @@ export function App() {
     loadData();
   }, []);
 
-  // Load files for current project
-  const loadFiles = async () => {
-    if (!currentProjectId) {
-      setFiles([]);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.storage
-        .from('project-files')
-        .list(`${currentProjectId}/`, { limit: 1000 });
-
-      if (error) throw error;
-
-      const fileNodes: FileNode[] = (data || []).map(item => ({
-        id: item.name,
-        name: item.name.split('/').pop() || item.name,
-        type: item.name.endsWith('/') ? 'folder' : 'file',
-        path: item.name,
-      }));
-
-      setFiles(fileNodes);
-    } catch (err) {
-      console.warn('Files load failed:', err);
-      setFiles([]);
-    }
-  };
-
-  useEffect(() => {
-    loadFiles();
-  }, [currentProjectId]);
-
-  // Handlers
-  const handleSelectProject = (projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (project) {
-      setCurrentProjectId(projectId);
-      setCurrentProjectName(project.title);
+  const handleSelectProject = (id: string) => {
+    const p = projects.find(p => p.id === id);
+    if (p) {
+      setCurrentProjectId(id);
+      setCurrentProjectName(p.title);
       setCurrentConvId(null);
     }
   };
 
-  const handleSelectConversation = (convId: string) => {
-    setCurrentConvId(convId);
-    navigate(`/chat/${convId}`);
+  const handleSelectConversation = (id: string) => {
+    setCurrentConvId(id);
+    navigate(`/chat/${id}`);
   };
 
   const handleCreateProject = async () => {
-    try {
-      const title = prompt('Project name:') || 'New Project';
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({ title, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setProjects(prev => [data, ...prev]);
-        handleSelectProject(data.id);
-      }
-    } catch (err) {
-      setError('Failed to create project');
+    const title = prompt('Project name:') || 'New Project';
+    const { data } = await supabase
+      .from('projects')
+      .insert({ title })
+      .select()
+      .single();
+    if (data) {
+      setProjects(p => [data, ...p]);
+      handleSelectProject(data.id);
     }
   };
 
-  const handleCreateConversation = async (projectId?: string) => {
-    const pid = projectId || currentProjectId;
-    if (!pid) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert({
-          title: 'New Chat',
-          project_id: pid,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setConversations(prev => [data, ...prev]);
-        handleSelectConversation(data.id);
-      }
-    } catch (err) {
-      setError('Failed to create conversation');
-    }
-  };
-
-  const handleSaveFile = async () => {
-    if (!selectedFile || !currentProjectId) return;
-
-    setIsSaving(true);
-    try {
-      const { error } = await supabase.storage
-        .from('project-files')
-        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), {
-          upsert: true,
-          contentType: 'text/plain',
-        });
-
-      if (error) throw error;
-      setLastSaved(new Date());
-    } catch (err) {
-      setError('Failed to save file');
-    } finally {
-      setIsSaving(false);
+  const handleCreateConversation = async () => {
+    if (!currentProjectId) return;
+    const { data } = await supabase
+      .from('conversations')
+      .insert({ title: 'New Chat', project_id: currentProjectId })
+      .select()
+      .single();
+    if (data) {
+      setConversations(c => [data, ...c]);
+      handleSelectConversation(data.id);
     }
   };
 
   const handleLogout = () => {
     supabase.auth.signOut();
     navigate('/login');
-  };
-
-  const handleFileClick = (node: FileNode) => {
-    setSelectedFile(node);
-    setFileContent(`// ${node.name}\n// Edit your code here...`);
   };
 
   if (globalLoading || settingsLoading) {
@@ -234,13 +113,11 @@ export function App() {
     );
   }
 
-  if (showSettings) {
-    return <SettingsPage />;
-  }
+  if (showSettings) return <SettingsPage />;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Left Sidebar Navigation */}
+    <div className="h-screen flex bg-gray-50">
+      {/* Permanent Left Sidebar */}
       <NavigationMenu
         currentView={currentView}
         onOpenSettings={() => setShowSettings(true)}
@@ -248,120 +125,56 @@ export function App() {
         userName={userName}
       />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Hierarchical Sidebar for Projects & Chats */}
-        <aside className="w-80 bg-white border-r border-gray-200 flex flex-col">
-          <HierarchicalSidebar
-            currentProjectId={currentProjectId}
-            currentConvId={currentConvId}
-            projects={projects}
-            conversations={conversations}
-            onSelectProject={handleSelectProject}
-            onSelectConv={handleSelectConversation}
-            onCreateNewProject={handleCreateProject}
-            onCreateNewConv={handleCreateConversation}
-            onDeleteConv={async (id) => {
-              await supabase.from('conversations').delete().eq('id', id);
-              setConversations(prev => prev.filter(c => c.id !== id));
-            }}
-            onUpdateTitle={async (id, title, isProject) => {
-              const table = isProject ? 'projects' : 'conversations';
-              await supabase.from(table).update({ title, updated_at: new Date().toISOString() }).eq('id', id);
-              if (isProject) {
-                setProjects(prev => prev.map(p => p.id === id ? { ...p, title } : p));
-                if (currentProjectId === id) setCurrentProjectName(title);
-              } else {
-                setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
-              }
-            }}
-          />
-        </aside>
+      {/* Secondary Sidebar — Projects & Chats */}
+      <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <HierarchicalSidebar
+          currentProjectId={currentProjectId}
+          currentConvId={currentConvId}
+          projects={projects}
+          conversations={conversations}
+          onSelectProject={handleSelectProject}
+          onSelectConv={handleSelectConversation}
+          onCreateNewProject={handleCreateProject}
+          onCreateNewConv={handleCreateConversation}
+          onDeleteConv={async (id) => {
+            await supabase.from('conversations').delete().eq('id', id);
+            setConversations(c => c.filter(x => x.id !== id));
+          }}
+          onUpdateTitle={async (id, title, isProject) => {
+            const table = isProject ? 'projects' : 'conversations';
+            await supabase.from(table).update({ title }).eq('id', id);
+            if (isProject) {
+              setProjects(p => p.map(x => x.id === id ? { ...x, title } : x));
+              if (currentProjectId === id) setCurrentProjectName(title);
+            } else {
+              setConversations(c => c.map(x => x.id === id ? { ...x, title } : x));
+            }
+          }}
+        />
+      </aside>
 
-        {/* Editor / Chat Area */}
-        <main className="flex-1 overflow-hidden bg-white">
-          {location.pathname.startsWith('/chat/') ? (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              <div className="text-center">
-                <MessageSquare className="w-24 h-24 mx-auto mb-6 opacity-50" />
-                <p className="text-2xl font-medium">Chat interface coming soon</p>
-                <p className="text-sm mt-2">Selected conversation: {currentConvId || 'None'}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full">
-              {/* File Tree */}
-              <div className="w-80 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Files ({files.length})</h3>
-                {files.length === 0 ? (
-                  <p className="text-sm text-gray-500">No files in project</p>
-                ) : (
-                  files.map(node => (
-                    <button
-                      key={node.id}
-                      onClick={() => handleFileClick(node)}
-                      className={`flex items-center gap-2 w-full px-3 py-2 hover:bg-white rounded-lg text-left transition-colors ${
-                        selectedFile?.id === node.id ? 'bg-blue-50 text-blue-700' : ''
-                      }`}
-                    >
-                      {node.type === 'folder' ? <FolderOpen className="w-5 h-5 text-indigo-600" /> : <FileText className="w-5 h-5 text-gray-600" />}
-                      <span className="text-sm truncate flex-1">{node.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              {/* Code Editor */}
-              <div className="flex-1 flex flex-col">
-                {selectedFile ? (
-                  <>
-                    <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FileCode className="w-5 h-5 text-gray-600" />
-                        <span className="font-medium text-gray-800">{selectedFile.name}</span>
-                        {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {lastSaved && !isSaving && <Check className="w-4 h-4 text-green-600" />}
-                      </div>
-                      <button
-                        onClick={handleSaveFile}
-                        disabled={isSaving}
-                        className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2 text-sm font-medium"
-                      >
-                        <Save className="w-4 h-4" />
-                        {isSaving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                    <textarea
-                      className="flex-1 p-8 font-mono text-sm bg-gray-50 resize-none focus:outline-none leading-relaxed"
-                      value={fileContent}
-                      onChange={e => setFileContent(e.target.value)}
-                      spellCheck={false}
-                      placeholder="// Start coding..."
-                    />
-                  </>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-gray-400">
-                    <div className="text-center">
-                      <FileText className="w-20 h-20 mx-auto mb-6 opacity-50" />
-                      <p className="text-xl font-medium">Select a file to edit</p>
-                      <p className="text-sm mt-3">or create something new</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* Error Toast */}
-      {error && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50 animate-in slide-in-from-bottom">
-          <AlertCircle className="w-6 h-6" />
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-6 text-2xl hover:opacity-70">×</button>
-        </div>
-      )}
+      {/* Main Content — Ready for Chat */}
+      <main className="flex-1 bg-white flex items-center justify-center">
+        {location.pathname.startsWith('/chat/') ? (
+          <div className="text-center max-w-lg">
+            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-32 h-32 mx-auto mb-8" />
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              Grok-Powered Chat Interface
+            </h1>
+            <p className="text-xl text-gray-600">
+              Streaming • Markdown • Code Execution • File Uploads
+            </p>
+            <p className="text-sm text-gray-500 mt-8">
+              Ready when you are. Just say the word.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center text-gray-400">
+            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-24 h-24 mx-auto mb-6" />
+            <p className="text-2xl font-medium">Select a project or start a new chat</p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
