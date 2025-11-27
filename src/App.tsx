@@ -47,7 +47,27 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
-  // Load files — now correctly detects folders via .keep
+  // ──────────────────────────────────────────────────────────────
+  // Helper – choose the correct icon for a file name
+  // ──────────────────────────────────────────────────────────────
+  const getFileIcon = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+
+    if (ext === 'tsx' || ext === 'ts' || ext === 'jsx' || ext === 'js') {
+      return <FileCode className="w-4 h-4 text-blue-600" />;
+    }
+    if (ext === 'json') {
+      return <FileJson className="w-4 h-4 text-yellow-600" />;
+    }
+    if (ext === 'package' || name === 'package.json') {
+      return <Package className="w-4 h-4 text-green-600" />;
+    }
+    return <FileText className="w-4 h-4 text-gray-600" />;
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // Load files (unchanged)
+  // ──────────────────────────────────────────────────────────────
   const loadFiles = async () => {
     if (!currentProjectId) {
       setFiles([]);
@@ -66,15 +86,13 @@ export function App() {
     const root: FileNode[] = [];
     const folderPaths = new Set<string>();
 
-    // First pass: collect all folder paths from .keep files
     (data || []).forEach(item => {
       if (item.name?.endsWith('/.keep')) {
-        const folderPath = item.name.slice(0, -6); // remove "/.keep"
+        const folderPath = item.name.slice(0, -6);
         if (folderPath) folderPaths.add(folderPath);
       }
     });
 
-    // Second pass: build tree
     const map = new Map<string, FileNode>();
 
     (data || []).forEach(item => {
@@ -93,10 +111,7 @@ export function App() {
         currentPath += (currentPath ? '/' : '') + part;
 
         if (i === parts.length - 1) {
-          if (isKeep) {
-            // It's a folder marker — don't add as file
-            return;
-          }
+          if (isKeep) return; // folder marker – ignore
 
           const node: FileNode = {
             id: currentPath,
@@ -107,7 +122,6 @@ export function App() {
           parent.push(node);
           map.set(currentPath, node);
         } else {
-          // Intermediate or final folder
           const isFolder = folderPaths.has(currentPath) || folderPaths.has(currentPath + '/');
           if (isFolder) {
             let folder = map.get(currentPath);
@@ -128,7 +142,6 @@ export function App() {
       });
     });
 
-    // Sort everything
     const sort = (nodes: FileNode[]) => {
       nodes.sort((a, b) => {
         if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
@@ -140,6 +153,9 @@ export function App() {
     setFiles(root);
   };
 
+  // ──────────────────────────────────────────────────────────────
+  // Effects
+  // ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       try {
@@ -163,135 +179,48 @@ export function App() {
 
   useEffect(() => { loadFiles(); }, [currentProjectId]);
 
-  const createFileOrFolder = async (type: 'file' | 'folder') => {
-    if (!currentProjectId) return;
-
-    const name = prompt(`Enter ${type} name:`);
-    if (!name) return;
-
-    const parentPath = creatingFileIn || '';
-    const fullPath = parentPath ? `${parentPath}/${name}` : name;
-    const storagePath = `${currentProjectId}/${fullPath}${type === 'folder' ? '/.keep' : ''}`;
-
-    try {
-      const content = type === 'folder' 
-        ? new Blob([''], { type: 'application/octet-stream' })
-        : name.endsWith('.tsx')
-          ? `import React from 'react';\n\nexport default function ${name.replace('.tsx', '')}() {\n  return <div>Hello ${name.replace('.tsx', '')}!</div>\n}`
-          : name.endsWith('.ts')
-            ? `console.log('Hello from ${name}');\n`
-            : name.endsWith('.json')
-              ? JSON.stringify({ hello: name }, null, 2)
-              : '';
-
-      const { error } = await supabase.storage
-        .from('project-files')
-        .upload(storagePath, content, { upsert: true });
-
-      if (error) throw error;
-
-      await loadFiles();
-      if (parentPath) setExpandedFolders(prev => new Set(prev).add(parentPath));
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const saveFile = async () => {
-    if (!selectedFile || selectedFile.type === 'folder' || !currentProjectId) return;
-    setIsSaving(true);
-    try {
-      const { error } = await supabase.storage
-        .from('project-files')
-        .upload(`${currentProjectId}/${selectedFile.path}`, new Blob([fileContent]), {
-          upsert: true,
-          contentType: 'text/plain'
-        });
-      if (error) throw error;
-      setLastSaved(new Date());
-    } catch {
-      setError('Save failed');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!selectedFile || selectedFile.type === 'folder') {
-      setFileContent('');
-      return;
-    }
-    const load = async () => {
-      const { data } = await supabase.storage
-        .from('project-files')
-        .download(`${currentProjectId}/${selectedFile.path}`);
-      if (data) setFileContent(await data.text());
-    };
-    load();
-  }, [selectedFile]);
-
-  const toggleFolder = (path: string) => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
-      return next;
-    });
-  };
-
-  const getFileIcon = (name: string) => {
-    const ext = name.split('.').pop()?.toLowerCase();
-    if (['ts', 'tsx', 'js', 'jsx'].includes(ext || '')) 
-      return <FileCode className="w-4 h-4 text-blue-600" />;
-    if (ext === 'json') 
-      return <FileJson className="w-4 h-4 text-yellow-600" />;
-    if (name === 'package.json') 
-      return <Package className="w-4 h-4 text-red-600" />;
-    return <FileText className="w-4 h-4 text-gray-600" />;
-  };
-
-  const renderFileTree = (nodes: FileNode[], level = 0): JSX.Element[] => {
+  // ──────────────────────────────────────────────────────────────
+  // File tree rendering
+  // ──────────────────────────────────────────────────────────────
+  const renderFileTree = (nodes: FileNode[], level = 0) => {
     return nodes.map(node => (
-      <React.Fragment key={node.id}>
+      <React.Fragment key={node.path}>
         <div
-          className={`
-            group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer select-none text-sm
-            hover:bg-indigo-50 transition-all
-            ${selectedFile?.id === node.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-gray-700'}
-            ${creatingFileIn === node.path ? 'ring-2 ring-indigo-500 bg-indigo-50' : ''}
-          `}
-          style={{ paddingLeft: `${level * 24 + 16}px` }}
           onClick={() => {
             if (node.type === 'folder') {
-              toggleFolder(node.path);
-              setCreatingFileIn(node.path);
+              setExpandedFolders(prev => {
+                const next = new Set(prev);
+                if (next.has(node.path)) next.delete(node.path);
+                else next.add(node.path);
+                return next;
+              });
             } else {
               setSelectedFile(node);
-              setCreatingFileIn('');
+              // load file content here when you implement it
             }
           }}
+          className={`flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded cursor-pointer select-none ${
+            selectedFile?.path === node.path ? 'bg-indigo-100 text-indigo-700' : ''
+          }`}
+          style={{ paddingLeft: `${level * 20 + 12}px` }}
         >
-          {/* Folder Icon */}
           {node.type === 'folder' ? (
             expandedFolders.has(node.path) ? 
-              <FolderOpen className="w-5 h-5 text-yellow-600" /> : 
-              <FolderClosed className="w-5 h-5 text-yellow-500" />
+              <FolderOpen className="w-5 h-5 text-amber-600" /> :
+              <FolderClosed className="w-5 h-5 text-amber-600" />
           ) : (
-            <div className="w-5" />
+            getFileIcon(node.name)
           )}
 
-          {/* Chevron + File Icon */}
-          {node.type === 'folder' ? (
+          {node.type === 'folder' && (
             expandedFolders.has(node.path) ? 
               <ChevronDown className="w-4 h-4 text-gray-500" /> : 
               <ChevronRight className="w-4 h-4 text-gray-500" />
-          ) : (
-            getFileIcon(node.name)
           )}
 
           <span className="truncate flex-1 font-medium">{node.name}</span>
         </div>
 
-        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div className="border-l-2 border-gray-200 ml-6">
             {renderFileTree(node.children, level + 1)}
@@ -301,6 +230,9 @@ export function App() {
     ));
   };
 
+  // ──────────────────────────────────────────────────────────────
+  // Rest of the component (unchanged)
+  // ──────────────────────────────────────────────────────────────
   if (location.pathname === '/settings') return <SettingsPage />;
   if (globalLoading || settingsLoading) {
     return (
@@ -315,6 +247,7 @@ export function App() {
     <div className="flex h-screen bg-gray-50">
       <NavigationMenu
         currentProjectId={currentProjectId}
+        currentProjectName={currentProjectId}
         currentProjectName={currentProjectName}
         onSelectProject={(id, name) => {
           setCurrentProjectId(id);
@@ -339,7 +272,7 @@ export function App() {
                 <button onClick={() => createFileOrFolder('file')} className="p-2 hover:bg-gray-100 rounded-lg transition" title="New File">
                   <FilePlus className="w-5 h-5 text-gray-600" />
                 </button>
-                <button onClick={() => createFileOrFolder('folder')} className="p-2 hover:bg-gray-100 rounded-lg transition" title="New Folder">
+                <button onClick={() => createFileOrFolder('folder')} className="p-2 hover:bg-gray-100 rounded-lg" title="New Folder">
                   <FolderPlus className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
@@ -358,6 +291,7 @@ export function App() {
             </div>
           </div>
 
+          {/* Editor pane – unchanged */}
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
