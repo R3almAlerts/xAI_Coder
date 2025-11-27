@@ -1,257 +1,198 @@
 // src/components/SettingsPage.tsx
-import React, { useState, useRef } from 'react';
-import { Upload, X, Check, Loader2, Save } from 'lucide-react';
+import React, { useState } from 'react';
 import { useSettings } from '../hooks/useSettings';
+import { Upload, Copy, Check, Settings as SettingsIcon, Key, Palette, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
 
-export const SettingsPage = () => {
-  const navigate = useNavigate();
-  const { settings, isLoading: storeLoading } = useSettings();
+export default function SettingsPage() {
+  // Fixed: Defensive destructuring + loading state
+  const { settings, isLoading, updateSettings } = useSettings();
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [copied, setCopied] = useState(false);
 
-  const [localApiKey, setLocalApiKey] = useState(settings.apiKey);
-  const [localBaseUrl, setLocalBaseUrl] = useState(settings.baseUrl);
-  const [localModel, setLocalModel] = useState(settings.model);
-  const [localLogoUrl, setLocalLogoUrl] = useState(settings.logoUrl);
+  // Safely read values only when settings exist
+  const currentApiKey = settings?.apiKey || '';
+  const currentLogoUrl = settings?.logoUrl || '';
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await useSettings.getState().setSettings({
-        apiKey: localApiKey.trim(),
-        baseUrl: localBaseUrl.trim(),
-        model: localModel,
-        logoUrl: localLogoUrl,
-      });
-      setUploadSuccess(true);
-      setTimeout(() => setUploadSuccess(false), 3000);
-    } catch (err) {
-      alert('Failed to save settings');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleLogoUpload = async (file: File) => {
-    if (!file) return;
-    setUploading(true);
-
-    try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `logo-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('logos')
-        .upload(fileName, file, {
-          upsert: true,
-          contentType: file.type || 'image/png',
-          cacheControl: '3600',
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        // Better error message for common issues
-        if (uploadError.message.includes('row-level security policy')) {
-          alert('Upload failed: Row Level Security policy blocks uploads. Go to Supabase Dashboard → Authentication → Policies → Add policy for INSERT on storage.objects allowing anon to logos bucket.');
-        } else {
-          alert(`Upload failed: ${uploadError.message}`);
-        }
-        throw uploadError;
-      }
-
-      const { data } = supabase.storage
-        .from('logos')
-        .getPublicUrl(fileName);
-
-      // Cache-bust for fresh preview
-      setLocalLogoUrl(`${data.publicUrl}?t=${Date.now()}`);
-    } catch (err: any) {
-      console.error('Logo upload failed:', err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeLogo = () => {
-    setLocalLogoUrl('');
-  };
-
-  if (storeLoading) {
+  // Show skeleton while loading
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      <div className="max-w-4xl mx-auto p-8">
+        <div className="space-y-8">
+          <div className="h-8 w-64 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+          <div className="space-y-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="space-y-3">
+                <div className="h-6 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                <div className="h-12 w-full bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50">
-      <div className="max-w-4xl mx-auto p-6 pt-12">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-10">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Settings
-          </h1>
-          <button
-            onClick={() => navigate(-1)}
-            className="p-3 hover:bg-white/80 rounded-xl transition-all shadow-lg"
-          >
-            <X size={24} />
-          </button>
-        </div>
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-        <div className="grid gap-8 md:grid-cols-2">
-          {/* Left Column */}
-          <div className="space-y-8">
-            {/* API Key */}
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-white/50">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">xAI API Key</h2>
-              <input
-                type="password"
-                value={localApiKey}
-                onChange={(e) => setLocalApiKey(e.target.value)}
-                placeholder="xai-..."
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
+    setLogoFile(file);
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    const filePath = `logos/${fileName}`;
+
+    const { error } = await supabase.storage
+      .from('public')
+      .upload(filePath, file, { upsert: true });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return;
+    }
+
+    const { data } = supabase.storage.from('public').getPublicUrl(filePath);
+    const newLogoUrl = data.publicUrl;
+
+    await updateSettings({ logoUrl: newLogoUrl });
+    setLogoFile(null);
+  };
+
+  const handleApiKeySave = async () => {
+    if (apiKey.trim()) {
+      await updateSettings({ apiKey: apiKey.trim() });
+      setApiKey('');
+    }
+  };
+
+  const copyApiKey = () => {
+    navigator.clipboard.writeText(currentApiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 lg:p-8">
+      <div className="mb-10">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <SettingsIcon size={32} />
+          Settings
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">
+          Manage your xAI Coder preferences and API keys
+        </p>
+      </div>
+
+      <div className="space-y-8">
+
+        {/* Logo Upload */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Globe size={20} className="text-indigo-600" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Branding</h2>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex-shrink-0">
+              <img
+                src={currentLogoUrl || '/vite.svg'}
+                alt="Current logo"
+                className="w-24 h-24 rounded-xl object-contain bg-gray-100 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600"
               />
-              <p className="text-sm text-gray-500 mt-3">
-                Your key is stored securely and never leaves your device.
+            </div>
+
+            <div className="flex-1">
+              <label className="block">
+                <span className="sr-only">Upload new logo</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                />
+              </label>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Recommended: 512×512 PNG or SVG
               </p>
             </div>
-
-            {/* Base URL */}
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-white/50">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">API Base URL</h2>
-              <input
-                type="text"
-                value={localBaseUrl}
-                onChange={(e) => setLocalBaseUrl(e.target.value)}
-                placeholder="https://api.x.ai"
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-8">
-            {/* Model Selection */}
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-white/50">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">Model</h2>
-              <select
-                value={localModel}
-                onChange={(e) => setLocalModel(e.target.value)}
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
-              >
-                <option value="auto">Auto (Best Model)</option>
-
-                <optgroup label="Grok 4">
-                  <option value="grok-4">Grok 4 (Latest)</option>
-                  <option value="grok-4-fast-reasoning">Grok 4 Fast (Reasoning)</option>
-                  <option value="grok-4-fast-non-reasoning">Grok 4 Fast (Non-Reasoning)</option>
-                </optgroup>
-
-                <optgroup label="Specialized">
-                  <option value="grok-code-fast-1">Grok Code Fast 1</option>
-                </optgroup>
-
-                <optgroup label="Grok 3">
-                  <option value="grok-3">Grok 3</option>
-                  <option value="grok-3-fast">Grok 3 Fast</option>
-                  <option value="grok-3-mini">Grok 3 Mini</option>
-                  <option value="grok-3-mini-fast">Grok 3 Mini Fast</option>
-                </optgroup>
-
-                <optgroup label="Grok 2">
-                  <option value="grok-2-latest">Grok 2 (Latest)</option>
-                  <option value="grok-2-1212">Grok 2 (December 2024)</option>
-                </optgroup>
-
-                <optgroup label="Legacy">
-                  <option value="grok-beta">Grok Beta</option>
-                </optgroup>
-              </select>
-            </div>
-
-            {/* Logo Upload */}
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-white/50">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800">Custom Logo</h2>
-              
-              {localLogoUrl ? (
-                <div className="flex items-center gap-4 mb-6">
-                  <img src={localLogoUrl} alt="Logo" className="w-24 h-24 rounded-xl shadow-lg object-cover" />
-                  <button
-                    onClick={removeLogo}
-                    className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center">
-                  <div className="bg-gray-100 w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center">
-                    <Upload size={32} className="text-gray-400" />
-                  </div>
-                  <p className="text-gray-600 mb-4">Upload a logo (PNG, JPG, SVG)</p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:scale-105 transition-all disabled:opacity-50"
-                  >
-                    {uploading ? (
-                      <>
-                        <Loader2 className="inline mr-2 animate-spin" size={20} />
-                        Uploading...
-                      </>
-                    ) : (
-                      'Choose Image'
-                    )}
-                  </button>
-                </div>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && handleLogoUpload(e.target.files[0])}
-                className="hidden"
-              />
-            </div>
           </div>
         </div>
 
-        {/* Save Button */}
-        <div className="text-center mt-12">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-12 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xl font-bold rounded-2xl shadow-2xl hover:scale-105 transition-all disabled:opacity-70 flex items-center gap-4 mx-auto"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="animate-spin" size={28} />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={28} />
-                Save All Settings
-              </>
-            )}
-          </button>
+        {/* API Key */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Key size={20} className="text-green-600" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">xAI API Key</h2>
+          </div>
 
-          {uploadSuccess && (
-            <div className="mt-6 inline-flex items-center gap-3 bg-green-100 text-green-800 px-8 py-4 rounded-full text-lg font-medium">
-              <Check size={24} />
-              Settings saved successfully!
+          {currentApiKey ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <code className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                  {currentApiKey.slice(0, 12)}••••••••{currentApiKey.slice(-8)}
+                </code>
+                <button
+                  onClick={copyApiKey}
+                  className="ml-4 p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                >
+                  {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Your API key is stored securely and only used to communicate with Grok.
+              </p>
             </div>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 italic">
+              No API key configured yet
+            </p>
           )}
+
+          <div className="mt-6 flex gap-3">
+            <input
+              type="password"
+              placeholder="Enter your xAI API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleApiKeySave()}
+              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleApiKeySave}
+              disabled={!apiKey.trim()}
+              className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              Save Key
+            </button>
+          </div>
+
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+            Get your API key from{' '}
+            <a
+              href="https://x.ai/api"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              x.ai/api →
+            </a>
+          </p>
+        </div>
+
+        {/* Theme (Future) */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Palette size={20} className="text-purple-600" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Appearance</h2>
+          </div>
+          <p className="text-gray-500 dark:text-gray-400">
+            Dark mode follows your system preference
+          </p>
         </div>
       </div>
     </div>
   );
-};
+}
