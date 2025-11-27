@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Loader2, 
-  AlertCircleAlert as AlertCircle, 
+  AlertCircle, 
   Bot, 
   MessageSquare, 
   FolderOpen, 
@@ -68,8 +68,7 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  const [creatingFileIn, setCreatingFileIn] = useState<string | null>(null); // path prefix
-  const [newFileNameRef = useRef<HTMLInputElement>(null);
+  const [creatingFileIn, setCreatingFileIn] = useState<string>(''); // path prefix for new file
 
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(true);
@@ -167,8 +166,7 @@ function App() {
             if (!part || part === '.') return;
             currentPath += (currentPath ? '/' : '') + part;
 
-            if (i === parts.length - 1 && item.metadata) {
-              // It's a file
+            if (i === parts.length - 1 && !fullPath.endsWith('/')) {
               const node: FileNode = {
                 id: currentPath,
                 name: part,
@@ -178,7 +176,6 @@ function App() {
               parent.push(node);
               map.set(currentPath, node);
             } else {
-              // Folder
               let folder = map.get(currentPath);
               if (!folder) {
                 folder = {
@@ -222,7 +219,7 @@ function App() {
 
       if (error) throw error;
       setLastSaved(new Date());
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save failed:', err);
       setError('Failed to save file');
     } finally {
@@ -237,34 +234,37 @@ function App() {
     const name = prompt(`Enter ${type === 'file' ? 'file' : 'folder'} name:`);
     if (!name) return;
 
-    const path = creatingFileIn ? `${creatingFileIn}/${name}` : name;
-    const fullPath = `${currentProjectId}/${path}`;
+    const pathPrefix = creatingFileIn || '';
+    const fullPath = pathPrefix ? `${pathPrefix}/${name}` : name;
+    const storagePath = `${currentProjectId}/${fullPath}`;
 
-    if (type === 'file') {
-      const content = name.endsWith('.tsx') ? `export default function ${name.replace('.tsx', '')}() {\n  return <div>Hello World</div>\n}` : '';
-      
-      try {
+    try {
+      if (type === 'file') {
+        const defaultContent = name.endsWith('.tsx') 
+          ? `export default function ${name.replace('.tsx', '')}() {\n  return <div>Hello from ${name}!</div>\n}`
+          : name.endsWith('.ts') 
+          ? `console.log('Hello from ${name}');\n`
+          : '';
+
         const { error } = await supabase.storage
           .from('project-files')
-          .upload(fullPath, new Blob([content]), { upsert: true });
+          .upload(storagePath, new Blob([defaultContent]), { upsert: true });
 
         if (error) throw error;
+      } else {
+        // Create folder using .keep file
+        const { error } = await supabase.storage
+          .from('project-files')
+          .upload(`${storagePath}/.keep`, new Blob([]), { upsert: true });
 
-        // Refresh file list
-        const { data } = await supabase.storage.from('project-files').list(`${currentProjectId}/`, { limit: 1000 });
-        // Rebuild tree...
-        alert(`${type === 'file' ? 'File' : 'Folder'} created: ${name}`);
-      } catch (err) {
-        setError('Failed to create file');
+        if (error) throw error;
       }
-    } else {
-      // Create empty folder by uploading a placeholder
-      await supabase.storage
-        .from('project-files')
-        .upload(`${fullPath}/.keep`, new Blob([]), { upsert: true });
-    }
 
-    setCreatingFileIn(null);
+      // Trigger reload by toggling projectId (simple way to refresh tree)
+      setCurrentProjectId(prev => prev);
+    } catch (err: any) {
+      setError(`Failed to create ${type}: ${err.message}`);
+    }
   };
 
   // Load file content
@@ -291,11 +291,11 @@ function App() {
     loadContent();
   }, [selectedFile, currentProjectId]);
 
-  const toggleFolder = (id: string) => {
+  const toggleFolder = (path: string) => {
     setExpandedFolders(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   };
@@ -320,27 +320,27 @@ function App() {
           style={{ paddingLeft: `${level * 16 + 8}px` }}
           onClick={() => {
             if (node.type === 'folder') {
-              toggleFolder(node.id);
+              toggleFolder(node.path);
               setCreatingFileIn(node.path);
             } else {
               setSelectedFile(node);
-              setCreatingFileIn(null);
+              setCreatingFileIn('');
             }
           }}
         >
           {node.type === 'folder' ? (
-            expandedFolders.has(node.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+            expandedFolders.has(node.path) ? <ChevronDown size={16} /> : <ChevronRight size={16} />
           ) : (
             <div className="w-4" />
           )}
           {node.type === 'folder' ? (
-            <Folder size={16} className={expandedFolders.has(node.id) ? "text-yellow-600" : "text-yellow-500"} />
+            <Folder size={16} className={expandedFolders.has(node.path) ? "text-yellow-600" : "text-yellow-500"} />
           ) : (
             getFileIcon(node.name)
           )}
           <span className="text-sm">{node.name}</span>
         </div>
-        {node.type === 'folder' && node.children && expandedFolders.has(node.id) && (
+        {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div>{renderFileTree(node.children, level + 1)}</div>
         )}
       </div>
@@ -514,25 +514,17 @@ function App() {
             </div>
           )}
 
-          {/* FILES TAB - WITH CREATE FILE/FOLDER */}
+          {/* FILES TAB */}
           {activeTab === 'files' && (
             <div className="flex h-full">
               <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-semibold text-sm text-gray-700">EXPLORER</h3>
                   <div className="flex gap-1">
-                    <button
-                      onClick={() => createFileOrFolder('file')}
-                      className="p-1 hover:bg-gray-100 rounded"
-                      title="New File"
-                    >
+                    <button onClick={() => createFileOrFolder('file')} className="p-1 hover:bg-gray-100 rounded" title="New File">
                       <FilePlus size={16} />
                     </button>
-                    <button
-                      onClick={() => createFileOrFolder('folder')}
-                      className="p-1 hover:bg-gray-100 rounded"
-                      title="New Folder"
-                    >
+                    <button onClick={() => createFileOrFolder('folder')} className="p-1 hover:bg-gray-100 rounded" title="New Folder">
                       <FolderPlus size={16} />
                     </button>
                   </div>
@@ -550,7 +542,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Editor */}
               <div className="flex-1 bg-white flex flex-col">
                 {selectedFile && selectedFile.type === 'file' ? (
                   <>
@@ -559,7 +550,7 @@ function App() {
                         {getFileIcon(selectedFile.name)}
                         <span className="font-medium text-sm">{selectedFile.name}</span>
                         {isSaving && <Loader2 size={14} className="animate-spin text-gray-500" />}
-                        {lastSaved && !isSaving && <Check size={14} className="text-green-500" />}
+                        {lastSaved && <Check size={14} className="text-green-500" />}
                       </div>
                       <button
                         onClick={saveFile}
