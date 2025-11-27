@@ -127,7 +127,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="h-screen flex bg-gray-50">
       {/* Main Left Sidebar */}
       <NavigationMenu
         currentView={currentView}
@@ -136,7 +136,7 @@ export function App() {
         userName={userName}
       />
 
-      {/* Project & Conversation Sidebar */}
+      {/* Projects & Conversations Sidebar */}
       <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
         <HierarchicalSidebar
           currentProjectId={currentProjectId}
@@ -168,10 +168,10 @@ export function App() {
         />
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 bg-white overflow-hidden">
+      {/* Main Content Area */}
+      <main className="flex-1 bg-white overflow-hidden flex items-center justify-center">
         {showSettings ? (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col w-full">
             <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6">
               <h2 className="text-2xl font-bold">Settings</h2>
               <button
@@ -181,16 +181,15 @@ export function App() {
                 ← Back
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-8">
               <SettingsPage />
             </div>
           </div>
         ) : location.pathname.startsWith('/chat/') ? (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col w-full">
             <div className="h-16 border-b border-gray-200 flex items-center px-6">
               <h2 className="text-2xl font-bold">Chat with Grok</h2>
             </div>
-            {/* Your Chat Interface component goes here */}
             <div className="flex-1 p-8 text-center text-gray-400">
               <MessageSquare className="w-24 h-24 mx-auto mb-6 opacity-50" />
               <p className="text-2xl font-medium">Chat interface ready</p>
@@ -198,7 +197,7 @@ export function App() {
             </div>
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center text-gray-400 text-center">
+          <div className="text-center text-gray-400">
             <div className="bg-gray-200 border-2 border-dashed rounded-xl w-32 h-32 mx-auto mb-8" />
             <h2 className="text-3xl font-semibold mb-2">Welcome to xAI Coder</h2>
             <p className="text-xl">Select a project or start a new chat</p>

@@ -10,7 +10,7 @@ interface Props {
   onCreateNew: () => void
   onDeleteConv: (id: string) => void
   onUpdateTitle: (id: string, title: string) => void
-  currentProjectName?: string  // ← NEW PROP
+  currentProjectName?: string; // Optional folder name for dynamic text
 }
 
 export function ConversationsList({
@@ -116,10 +116,10 @@ export function ConversationsList({
                         </button>
                         <button
                           onClick={() => onDeleteConv(conv.id)}
-                          className="p-1 hover:bg-red-100 rounded"
+                          className="p-1 hover:bg-red-100 rounded text-red-600"
                           title="Delete"
                         >
-                          <Trash2 size={14} className="text-red-600" />
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </>
@@ -131,5 +131,5 @@ export function ConversationsList({
         )}
       </div>
     </div>
-  )
+  );
 }

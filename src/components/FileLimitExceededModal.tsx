@@ -1,12 +1,13 @@
+// src/components/FileLimitExceededModal.tsx
 import { useEffect } from 'react';
-import { X, AlertCircle, Folder, FileText } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 
 interface FileLimitExceededModalProps {
   isOpen: boolean;
   onClose: () => void;
   exceededCount: number;
   maxFiles: number;
-  folderName?: string; // Optional folder name for dynamic text
+  folderName?: string;
 }
 
 export function FileLimitExceededModal({ 
@@ -14,16 +15,14 @@ export function FileLimitExceededModal({
   onClose, 
   exceededCount, 
   maxFiles,
-  folderName = 'selected folder' // Default if not provided
+  folderName = 'selected folder'
 }: FileLimitExceededModalProps) {
   useEffect(() => {
     if (isOpen) {
-      // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
-
     return () => {
       document.body.style.overflow = 'unset';
     };

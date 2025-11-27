@@ -123,5 +123,5 @@ export function ProjectsList({
         ))}
       </div>
     </div>
-  )
+  );
 }

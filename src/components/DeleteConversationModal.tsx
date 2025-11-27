@@ -1,3 +1,4 @@
+// src/components/DeleteConversationModal.tsx
 import { useEffect } from 'react';
 import { X, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -16,12 +17,10 @@ export function DeleteConversationModal({
 }: DeleteConversationModalProps) {
   useEffect(() => {
     if (isOpen) {
-      // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
-
     return () => {
       document.body.style.overflow = 'unset';
     };

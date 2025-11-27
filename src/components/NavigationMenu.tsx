@@ -54,7 +54,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
         </button>
       </header>
 
-      {/* Sidebar */}
+      {/* Sidebar — Slide-out on mobile, fixed on desktop */}
       <motion.aside
         initial={false}
         animate={{ x: mobileOpen ? 0 : window.innerWidth >= 1024 ? 0 : -280 }}

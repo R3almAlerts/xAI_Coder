@@ -1,3 +1,4 @@
+// src/components/ChatMessage.tsx
 import { useState } from 'react';
 import { Bot, User, Paperclip, Download, FileText, AlertCircle } from 'lucide-react';
 import { Message, FileAttachment } from '../types';
@@ -20,7 +21,6 @@ function AttachmentPreview({ attachment }: { attachment: FileAttachment }) {
 
   const downloadFile = () => {
     if (attachment.url) {
-      // Download from URL
       const a = document.createElement('a');
       a.href = attachment.url;
       a.download = attachment.name;
@@ -28,7 +28,6 @@ function AttachmentPreview({ attachment }: { attachment: FileAttachment }) {
       a.click();
       document.body.removeChild(a);
     } else if (attachment.content) {
-      // Legacy base64 download
       try {
         const byteCharacters = atob(attachment.content);
         const byteNumbers = new Array(byteCharacters.length);
@@ -66,45 +65,45 @@ function AttachmentPreview({ attachment }: { attachment: FileAttachment }) {
         textContent = await response.text();
       } else if (attachment.content) {
         textContent = atob(attachment.content);
-      } else {
-        return;
       }
 
-      setPreviewText(textContent.substring(0, 500) + (textContent.length > 500 ? '...' : ''));
+      setPreviewText(textContent.substring(0, 300) + (textContent.length > 300 ? '...' : ''));
     } catch (err) {
-      console.error('Error loading preview:', err);
       setPreviewError(true);
     }
   };
 
   const isImage = attachment.type.startsWith('image/');
-  const isText = attachment.type.startsWith('text/') || 
-                 attachment.type === 'application/json' ||
-                 attachment.name.endsWith('.md') ||
-                 attachment.name.endsWith('.txt');
+  const isText = attachment.type.startsWith('text/') || attachment.name.endsWith('.txt') || attachment.name.endsWith('.md');
 
   return (
-    <div className="mt-2 p-3 bg-white/10 rounded-lg border border-white/20">
-      <div className="flex items-center gap-2 mb-2">
-        <Paperclip size={14} className="text-current opacity-70" />
-        <span className="text-sm font-medium truncate">{attachment.name}</span>
-        <span className="text-xs opacity-70 ml-auto">
-          {formatFileSize(attachment.size)}
-        </span>
-        <button
-          onClick={downloadFile}
-          className="p-1 hover:bg-white/10 rounded transition-colors"
-          aria-label="Download file"
-        >
-          <Download size={14} />
-        </button>
+    <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText size={16} className="text-gray-600" />
+          <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">
+            {attachment.name}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">
+            {formatFileSize(attachment.size)}
+          </span>
+          <button
+            onClick={downloadFile}
+            className="p-1 hover:bg-gray-200 rounded transition-colors"
+            title="Download file"
+          >
+            <Download size={16} className="text-gray-600" />
+          </button>
+        </div>
       </div>
-      
+
       {isImage && (
         <img
           src={attachment.url || `data:${attachment.type};base64,${attachment.content}`}
           alt={attachment.name}
-          className="max-w-full max-h-48 rounded border border-white/20"
+          className="max-w-full h-auto rounded-lg border border-gray-200"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = 'none';
           }}

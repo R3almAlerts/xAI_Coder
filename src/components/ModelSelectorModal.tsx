@@ -75,7 +75,7 @@ export function ModelSelectorModal({ isOpen, onClose, currentModel, onSelectMode
                   >
                     <div className="flex items-center justify-between">
                       <span>{model.label}</span>
-                      {currentModel === model.value && <span className="text-blue-600 text-sm">Check</span>}
+                      {currentModel === model.value && <span className="text-blue-600 text-sm">Selected</span>}
                     </div>
                   </button>
                 ))}

@@ -238,7 +238,7 @@ export function HierarchicalSidebar({
                 )}
               </li>
             );
-          })}   {/* ← FIXED: removed the extra ) that caused the esbuild error */}
+          })}
         </ul>
       </nav>
 

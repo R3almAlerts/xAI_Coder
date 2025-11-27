@@ -1,3 +1,4 @@
+// src/components/ChatInput.tsx
 import { Send, Cpu, Paperclip, X, Loader2 } from 'lucide-react';
 import { useState, KeyboardEvent } from 'react';
 import { FileAttachment } from '../types';
@@ -16,7 +17,7 @@ export function ChatInput({
   currentModel,
   onOpenModelSelector,
 }: ChatInputProps) {
-  const [input, setInput] = useState(''); // ← Fixed: only one declaration
+  const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -70,8 +71,7 @@ export function ChatInput({
           url: publicUrl,
         });
       } catch (err) {
-        console.error('Upload failed:', err);
-        alert(`Failed to upload "${file.name}"`);
+        console.error('File upload failed:', err);
       }
     }
 
@@ -79,107 +79,69 @@ export function ChatInput({
     setIsUploading(false);
   };
 
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = reject;
       reader.readAsDataURL(file);
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = (error) => reject(error);
     });
+  };
 
-  const removeAttachment = (id: string) =>
+  const removeAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((input.trim() || attachments.length > 0) && !disabled && !isUploading) {
-      onSend(input.trim(), attachments.length ? attachments : undefined);
-      setInput('');
-      setAttachments([]);
-    }
+    if (disabled || isUploading || (!input.trim() && attachments.length === 0)) return;
+
+    onSend(input.trim(), attachments.length > 0 ? attachments : undefined);
+    setInput('');
+    setAttachments([]);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleSubmit(e as any);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t bg-white p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Upload status */}
-        {isUploading && (
-          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-            Uploading files…
-          </div>
-        )}
-
-        {/* Attachments preview */}
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4">
+      <div className="space-y-2">
         {attachments.length > 0 && (
-          <div className="mb-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600 font-medium">
-                {attachments.length} file{attachments.length !== 1 ? 's' : ''} attached
-              </p>
-              <button
-                type="button"
-                onClick={() => setAttachments([])}
-                disabled={isUploading}
-                className="text-sm text-red-600 hover:text-red-700 font-medium"
-              >
-                Clear all
-              </button>
-            </div>
-
+          <div className="flex flex-wrap gap-2">
             {attachments.map((att) => (
-              <div
-                key={att.id}
-                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
-              >
-                <Paperclip size={16} className="text-gray-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{att.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {formatFileSize(att.size)} • {att.type || 'Unknown'}
-                  </p>
-                </div>
+              <div key={att.id} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-sm">
+                <FileText size={16} className="text-gray-600" />
+                <span className="truncate max-w-[120px]">{att.name}</span>
                 <button
                   type="button"
                   onClick={() => removeAttachment(att.id)}
-                  disabled={isUploading}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors"
+                  className="text-gray-400 hover:text-red-600"
                 >
-                  <X size={16} className="text-gray-500" />
+                  <X size={16} />
                 </button>
               </div>
             ))}
           </div>
         )}
 
-        <div className="flex gap-3 mb-3">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onOpenModelSelector}
-            disabled={disabled || isUploading}
-            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium"
           >
             <Cpu size={16} />
-            <span>{getModelDisplayName(currentModel)}</span>
+            {getModelDisplayName(currentModel)}
           </button>
 
           <label className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer">
             <Paperclip size={16} />
-            <span>Attach Files</span>
+            <span>File</span>
             <input
               type="file"
               multiple
