@@ -43,7 +43,7 @@ export function App() {
   const [fileContent, setFileContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [creatingFileIn, setCreatingFileIn] = useState<string>(''); // Tracks active folder
+  const [creatingFileIn, setCreatingFileIn] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
@@ -142,7 +142,7 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // Create file/folder in correct location
+  // FIXED: Correct syntax — proper if/else chain with braces
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
@@ -159,10 +159,13 @@ export function App() {
       if (type === 'file') {
         if (name.endsWith('.tsx')) {
           content = `import React from 'react';\n\nexport default function ${name.replace('.tsx', '')}() {\n  return <div className="p-8">Hello from ${name.replace('.tsx', '')}!</div>\n}`;
-        else if (name.endsWith('.ts'))
+        } else if (name.endsWith('.ts')) {
           content = `console.log('Hello from ${name}');\n`;
-        else if (name.endsWith('.json'))
+        } else if (name.endsWith('.json')) {
           content = JSON.stringify({ name }, null, 2);
+        } else {
+          content = '';
+        }
       } else {
         content = new Blob([''], { type: 'application/octet-stream' });
       }
@@ -245,20 +248,19 @@ export function App() {
             group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer select-none text-sm
             hover:bg-indigo-50 transition-colors
             ${selectedFile?.id === node.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-gray-700'}
-            ${creatingFileIn === node.path ? 'bg-indigo-50 ring-2 ring-indigo-400' : ''}
+            ${creatingFileIn === node.path ? 'bg-indigo-100 ring-2 ring-indigo-400' : ''}
           `}
           style={{ paddingLeft: `${level * 24 + 16}px` }}
           onClick={() => {
             if (node.type === 'folder') {
               toggleFolder(node.path);
-              setCreatingFileIn(node.path); // Highlight & target this folder
+              setCreatingFileIn(node.path);
             } else {
               setSelectedFile(node);
               setCreatingFileIn('');
             }
           }}
         >
-          {/* Folder Icon */}
           {node.type === 'folder' ? (
             expandedFolders.has(node.path) ? 
               <FolderOpen className="w-5 h-5 text-yellow-600" /> : 
@@ -267,7 +269,6 @@ export function App() {
             <div className="w-5" />
           )}
 
-          {/* Expand/Collapse Chevron */}
           {node.type === 'folder' ? (
             expandedFolders.has(node.path) ? 
               <ChevronDown className="w-4 h-4 text-gray-500" /> : 
@@ -279,7 +280,6 @@ export function App() {
           <span className="truncate flex-1">{node.name}</span>
         </div>
 
-        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div className="border-l-2 border-gray-200 ml-6">
             {renderFileTree(node.children, level + 1)}
@@ -313,7 +313,7 @@ export function App() {
       />
 
       <div className="flex-1 flex flex-col lg:ml-80">
-        <div className="bg-white border-b px-6 py-4 shadow-sm flex items-center justify-between">
+        <div className="bg-white border-b px-6 py-4 shadow-sm">
           <h1 className="text-2xl font-bold text-gray-800">
             {currentProjectName || 'No Project Selected'}
           </h1>
@@ -398,7 +398,6 @@ export function App() {
         </div>
       </div>
 
-      {/* Error Toast */}
       {error && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
           <AlertCircle className="w-6 h-6" />
