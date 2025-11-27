@@ -10,14 +10,18 @@ import {
   FileJson,
   Package as PackageIcon,
   ChevronRight,
-  ChevronDownChevron as ChevronDown,
+  ChevronDown,        // FIXED: was ChevronDownChevron
   FilePlus,
   FolderPlus,
   Save,
   Check,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase, getUserId } from './lib/supabase';
+
+// FIXED: Correct Supabase imports
+import { supabase } from './lib/supabase';
+import getUserId from './lib/supabase'; // default export
+
 import { NavigationMenu } from './components/NavigationMenu';
 import { SettingsPage } from './components/SettingsPage';
 import { useSettings } from './hooks/useSettings';
@@ -47,7 +51,6 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
 
-  // Icon helper — correct file type icons
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
 
@@ -63,7 +66,6 @@ export function App() {
     return <FileText className="w-4 h-4 text-gray-600" />;
   };
 
-  // Load files from Supabase Storage
   const loadFiles = async () => {
     if (!currentProjectId) {
       setFiles([]);
@@ -96,6 +98,7 @@ export function App() {
 
       const isKeep = item.name.endsWith('/.keep');
       const cleanPath = isKeep ? item.name.slice(0, -6) : item.name;
+      // FIXED: Removed duplicate `const parts = ...` line
       const parts = cleanPath.split('/').filter(Boolean);
 
       if (parts.length === 0) return;
@@ -149,7 +152,6 @@ export function App() {
     setFiles(root);
   };
 
-  // Initialize project on mount
   useEffect(() => {
     const init = async () => {
       try {
@@ -175,7 +177,6 @@ export function App() {
     loadFiles();
   }, [currentProjectId]);
 
-  // Create file or folder
   const createFileOrFolder = async (type: 'file' | 'folder') => {
     if (!currentProjectId) return;
 
@@ -213,7 +214,6 @@ export function App() {
     }
   };
 
-  // Save file
   const saveFile = async () => {
     if (!selectedFile || selectedFile.type === 'folder' || !currentProjectId) return;
 
@@ -234,7 +234,6 @@ export function App() {
     }
   };
 
-  // Load file content on selection
   useEffect(() => {
     if (!selectedFile || selectedFile.type === 'folder') {
       setFileContent('');
@@ -250,7 +249,6 @@ export function App() {
     load();
   }, [selectedFile, currentProjectId]);
 
-  // Toggle folder open/close
   const toggleFolder = (path: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -259,7 +257,6 @@ export function App() {
     });
   };
 
-  // Render file tree with correct icons
   const renderFileTree = (nodes: FileNode[], level = 0): JSX.Element[] => {
     return nodes.map((node) => (
       <React.Fragment key={node.path}>
@@ -278,7 +275,6 @@ export function App() {
             }
           }}
         >
-          {/* Folder Icon */}
           {node.type === 'folder' ? (
             expandedFolders.has(node.path) ? (
               <FolderOpen className="w-5 h-5 text-amber-600" />
@@ -286,10 +282,9 @@ export function App() {
               <FolderClosed className="w-5 h-5 text-amber-600" />
             )
           ) : (
-            <div className="w-5" /> // spacer
+            <div className="w-5" />
           )}
 
-          {/* Chevron */}
           {node.type === 'folder' && (
             expandedFolders.has(node.path) ? (
               <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -298,13 +293,11 @@ export function App() {
             )
           )}
 
-          {/* File Icon */}
           {node.type === 'file' && getFileIcon(node.name)}
 
           <span className="truncate flex-1">{node.name}</span>
         </div>
 
-        {/* Children */}
         {node.type === 'folder' && node.children && expandedFolders.has(node.path) && (
           <div className="border-l-2 border-gray-200 ml-6">
             {renderFileTree(node.children, level + 1)}
@@ -314,10 +307,8 @@ export function App() {
     ));
   };
 
-  // Settings page shortcut
   if (location.pathname === '/settings') return <SettingsPage />;
 
-  // Loading screen
   if (globalLoading || settingsLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
@@ -348,23 +339,14 @@ export function App() {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* File Explorer */}
           <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
             <div className="px-5 py-4 border-b flex items-center justify-between">
               <h3 className="font-semibold text-sm uppercase tracking-wider text-gray-600">Explorer</h3>
               <div className="flex gap-2">
-                <button
-                  onClick={() => createFileOrFolder('file')}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                  title="New File"
-                >
+                <button onClick={() => createFileOrFolder('file')} className="p-2 hover:bg-gray-100 rounded-lg transition" title="New File">
                   <FilePlus className="w-5 h-5 text-gray-600" />
                 </button>
-                <button
-                  onClick={() => createFileOrFolder('folder')}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                  title="New Folder"
-                >
+                <button onClick={() => createFileOrFolder('folder')} className="p-2 hover:bg-gray-100 rounded-lg transition" title="New Folder">
                   <FolderPlus className="w-5 h-5 text-gray-600" />
                 </button>
               </div>
@@ -383,7 +365,6 @@ export function App() {
             </div>
           </div>
 
-          {/* Editor */}
           <div className="flex-1 bg-white flex flex-col">
             {selectedFile?.type === 'file' ? (
               <>
@@ -424,14 +405,11 @@ export function App() {
         </div>
       </div>
 
-      {/* Error Toast */}
       {error && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
           <AlertCircle className="w-6 h-6" />
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-6 text-2xl">
-            ×
-          </button>
+          <button onClick={() => setError(null)} className="ml-6 text-2xl">×</button>
         </div>
       )}
     </div>
