@@ -8,8 +8,7 @@ import {
   FolderOpen, 
   Terminal,
   Code2,
-  Sparkles,
-  Settings as SettingsIcon
+  Sparkles
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase, getUserId } from './lib/supabase';
@@ -134,7 +133,6 @@ function App() {
         timestamp: Date.now(),
       };
       setMessages(m => [...m, assistantMsg]);
-    });
     } catch (e: any) {
       setError(e.message || 'Failed to send message');
     } finally {
@@ -202,7 +200,7 @@ function App() {
       {/* Right Panel with Bolt.new-style tabs */}
       <div className="flex-1 flex flex-col lg:ml-80">
 
-        {/* Bolt.new-style Tab Bar */}
+        {/* Tab Bar */}
         <div className="bg-white border-b border-gray-200 flex items-center px-2 py-2">
           <div className="flex gap-1">
             <TabButton
@@ -244,7 +242,7 @@ function App() {
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden bg-gray-50">
 
-          {/* CHAT TAB – Your perfect chat stays 100% untouched */}
+          {/* CHAT TAB */}
           {activeTab === 'chat' && (
             <div className="flex flex-col h-full">
               <div className="bg-white border-b px-6 py-4 shadow-sm">
@@ -294,7 +292,7 @@ function App() {
             </div>
           )}
 
-          {/* FILES TAB – Placeholder (Bolt.new style) */}
+          {/* FILES TAB – Placeholder */}
           {activeTab === 'files' && (
             <div className="h-full flex items-center justify-center bg-gray-50">
               <div className="text-center">
@@ -314,7 +312,7 @@ function App() {
             </div>
           )}
 
-          {/* PREVIEW TAB – Live preview placeholder */}
+          {/* PREVIEW TAB – Placeholder */}
           {activeTab === 'preview' && (
             <div className="h-full bg-white flex flex-col">
               <div className="bg-gray-100 border-b px-4 py-2 text-sm text-gray-600">
