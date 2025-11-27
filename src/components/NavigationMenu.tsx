@@ -7,7 +7,6 @@ import {
   Settings,
   LogOut,
   User,
-  Plus,
   Menu as MenuIcon,
   X,
 } from 'lucide-react';
@@ -31,7 +30,6 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
   userName,
 }) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { settings } = useSettings();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -43,12 +41,10 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
     { icon: FolderOpen, label: 'Projects', path: '/projects', view: 'projects' },
   ];
 
-  const isActive = (view: string) => currentView === view;
-
   return (
     <>
-      {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-4">
+      {/* Mobile Header - Only shows on small screens */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <img src={logoUrl} alt="Logo" className="h-9 w-9 rounded-lg object-contain" />
           <h1 className="text-xl font-bold">xAI Coder</h1>
@@ -58,12 +54,14 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
         </button>
       </header>
 
-      {/* Sidebar */}
+      {/* Sidebar - Always visible on desktop, slide-in on mobile */}
       <motion.aside
         initial={false}
-        animate={{ x: mobileOpen ? 0 : -280 }}
+        animate={{
+          x: mobileOpen ? 0 : window.innerWidth >= 1024 ? 0 : -280,
+        }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col lg:translate-x-0 lg:static lg:z-auto"
+        className="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col lg:relative lg:z-auto lg:translate-x-0"
       >
         {/* Header */}
         <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-200 dark:border-gray-800 lg:h-auto lg:py-6">
@@ -75,7 +73,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
           />
           <h1 className="text-2xl font-bold hidden lg:block">xAI Coder</h1>
           <button onClick={() => setMobileOpen(false)} className="ml-auto lg:hidden">
-            <X size={24} />
+            <X size={28} />
           </button>
         </div>
 
@@ -83,7 +81,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
         <nav className="flex-1 px-4 py-6 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = isActive(item.view);
+            const active = currentView === item.view;
             return (
               <button
                 key={item.label}
@@ -125,7 +123,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
           )}
         </nav>
 
-        {/* User */}
+        {/* User Profile */}
         <div className="p-6 border-t border-gray-200 dark:border-gray-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
@@ -147,8 +145,8 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({
         />
       )}
 
-      {/* Spacer for mobile */}
-      <div className="lg:hidden h-16" />
+      {/* Mobile top padding */}
+      <div className="h-16 lg:hidden" />
     </>
   );
 };
