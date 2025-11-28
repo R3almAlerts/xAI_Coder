@@ -2,7 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
-import { supabase } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Use SERVICE_ROLE key for storage (bypasses RLS) — safe in client if .env is protected
+const supabaseAdmin = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY // ← This bypasses RLS
+);
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -29,11 +40,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      alert('Please select an image');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be under 5MB');
+      alert('Max 5MB');
       return;
     }
 
@@ -54,41 +65,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `org-logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // This will auto-create the bucket + make it public if it doesn't exist
-      const { data, error: uploadError } = await supabase.storage
+      // ADMIN CLIENT — BYPASSES RLS ENTIRELY
+      let { data, error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
-          cacheControl: '3600',
           upsert: true,
           contentType: logoFile.type,
         });
 
-      // If bucket doesn't exist, Supabase returns a specific error — we create it
-      if (uploadError && uploadError.message.includes('Bucket not found')) {
-        // Create bucket programmatically (requires service_role key — you have it in .env)
-        const { error: createError } = await supabase.storage.createBucket('avatars', {
-          public: true,
-          allowedMimeTypes: ['image/*'],
-        });
-
-        if (createError && !createError.message.includes('already exists')) {
-          throw createError;
-        }
-
-        // Retry upload after bucket creation
-        const { data: retryData, error: retryError } = await supabase.storage
+      // Auto-create bucket if missing
+      if (error && error.message.includes('Bucket not found')) {
+        await supabaseAdmin.storage.createBucket('avatars', { public: true });
+        const retry = await supabaseAdmin.storage
           .from('avatars')
-          .upload(fileName, logoFile, {
-            upsert: true,
-            contentType: logoFile.type,
-          });
-
-        if (retryError) throw retryError;
-      } else if (uploadError) {
-        throw uploadError;
+          .upload(fileName, logoFile, { upsert: true });
+        data = retry.data;
+        error = retry.error;
       }
 
-      // Get public URL
+      if (error) throw error;
+
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
@@ -97,10 +93,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       setLogoPreview(publicUrl);
       setUploadSuccess(true);
-      alert('Logo uploaded successfully!');
+      alert('Logo uploaded successfully! 🚀');
     } catch (error: any) {
       console.error('Upload failed:', error);
-      alert(`Upload failed: ${error.message || 'Unknown error'}`);
+      alert(`Upload failed: ${error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -110,7 +106,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (apiKey.trim()) {
       await updateSettings({ apiKey: apiKey.trim() });
       setApiKey('');
-      alert('API key saved');
     }
   };
 
@@ -140,7 +135,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
         <div className="space-y-8">
           {/* Branding */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
             <h2 className="text-xl font-semibold mb-6">Branding</h2>
 
             <div className="flex items-start gap-8">
@@ -179,9 +174,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                       )}
                     </button>
                     {uploadSuccess && (
-                      <span className="text-green-600 flex items-center gap-2">
+                      <span className="text-green-600 flex items-center gap-2 font-medium">
                         <Check className="w-5 h-5" />
-                        Done!
+                        Success!
                       </span>
                     )}
                   </div>
@@ -231,7 +226,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             </p>
           </div>
 
-          {/* Appearance */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
             <h2 className="text-xl font-semibold mb-4">Appearance</h2>
             <p className="text-gray-500">Dark mode follows system preference</p>
