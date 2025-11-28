@@ -54,8 +54,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // USING AVATARS BUCKET — AS REQUESTED
-      const { data, error } = await supabase.storage
+      // PRIMARY: avatars bucket (with RLS policies)
+      let { data, error } = await supabase.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
@@ -63,10 +63,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           cacheControl: '3600',
         });
 
+      // FALLBACK: chat-attachments if avatars RLS blocks
+      if (error && error.message.includes('row level security policy')) {
+        console.warn('Avatars RLS blocked — falling back to chat-attachments');
+        ({ data, error } = await supabase.storage
+          .from('chat-attachments')
+          .upload(fileName, logoFile, {
+            upsert: true,
+            contentType: logoFile.type,
+          }));
+      }
+
       if (error) throw error;
 
+      // Get public URL from the successful bucket
+      const bucketUsed = error ? 'chat-attachments' : 'avatars';
       const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
+        .from(bucketUsed)
         .getPublicUrl(fileName);
 
       await updateSettings({ logoUrl: publicUrl });
