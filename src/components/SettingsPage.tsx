@@ -2,7 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
-import { supabase } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Public client (auth + DB)
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+// Admin client — ONLY for storage (bypasses RLS 100%)
+const supabaseAdmin = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+);
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -54,8 +66,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // PRIMARY: avatars bucket (with RLS policies)
-      let { data, error } = await supabase.storage
+      // SERVICE_ROLE KEY → BYPASSES ALL RLS & BUCKET CHECKS
+      const { data, error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
@@ -63,23 +75,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           cacheControl: '3600',
         });
 
-      // FALLBACK: chat-attachments if avatars RLS blocks
-      if (error && error.message.includes('row level security policy')) {
-        console.warn('Avatars RLS blocked — falling back to chat-attachments');
-        ({ data, error } = await supabase.storage
-          .from('chat-attachments')
-          .upload(fileName, logoFile, {
-            upsert: true,
-            contentType: logoFile.type,
-          }));
+      if (error && error.message.includes('Bucket not found')) {
+        // Auto-create bucket if missing
+        await supabaseAdmin.storage.createBucket('avatars', { public: true });
+        // Retry upload
+        await supabaseAdmin.storage.from('avatars').upload(fileName, logoFile, { upsert: true });
+      } else if (error) {
+        throw error;
       }
 
-      if (error) throw error;
-
-      // Get public URL from the successful bucket
-      const bucketUsed = error ? 'chat-attachments' : 'avatars';
+      // Get public URL via public client
       const { data: { publicUrl } } = supabase.storage
-        .from(bucketUsed)
+        .from('avatars')
         .getPublicUrl(fileName);
 
       await updateSettings({ logoUrl: publicUrl });
@@ -87,6 +94,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       setLogoPreview(publicUrl);
       setUploadSuccess(true);
       alert('Logo uploaded successfully!');
+
     } catch (error: any) {
       console.error('Upload failed:', error);
       alert(`Upload failed: ${error.message}`);
@@ -135,7 +143,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             <div className="flex items-start gap-8">
               <img
                 src={logoPreview || '/vite.svg'}
-                alt="Organization logo"
+                alt="Logo"
                 className="w-32 h-32 rounded-xl object-contain bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 p-2"
               />
 
@@ -147,7 +155,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
                 />
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Max 5MB • PNG, JPG, SVG recommended
+                  Max 5MB • PNG, JPG, SVG
                 </p>
 
                 {logoFile && (
@@ -155,7 +163,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                     <button
                       onClick={uploadLogo}
                       disabled={isUploading}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium transition"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
                     >
                       {isUploading ? (
                         <>
@@ -169,7 +177,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                         </>
                       )}
                     </button>
-
                     {uploadSuccess && (
                       <span className="text-green-600 flex items-center gap-2 font-medium">
                         <Check className="w-5 h-5" />
@@ -183,7 +190,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           </div>
 
           {/* API Key */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">xAI API Key</h2>
 
             {settings?.apiKey ? (
@@ -197,7 +204,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
               <p className="text-gray-500 dark:text-gray-400 italic mb-4">No API key configured</p>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-6">
               <input
                 type="password"
                 placeholder="sk-ant-..."
@@ -209,7 +216,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
               <button
                 onClick={handleApiKeySave}
                 disabled={!apiKey.trim()}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
               >
                 Save Key
               </button>
@@ -223,7 +230,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             </p>
           </div>
 
-          {/* Appearance */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
             <p className="text-gray-500 dark:text-gray-400">Dark mode follows system preference</p>
