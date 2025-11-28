@@ -2,19 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
-import { createClient } from '@supabase/supabase-js';
-
-// Public client (for auth, DB)
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
-// Admin client (for storage uploads — bypasses RLS)
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY // This is your working key
-);
+import { supabase } from '../lib/supabase';
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -64,26 +52,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
     try {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `org-logo-${crypto.randomUUID()}.${fileExt}`;
+      const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // Auto-create bucket + upload (service_role bypasses RLS)
-      let { error } = await supabaseAdmin.storage
+      // USING AVATARS BUCKET — AS REQUESTED
+      const { data, error } = await supabase.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
           contentType: logoFile.type,
+          cacheControl: '3600',
         });
-
-      if (error && error.message.includes('Bucket not found')) {
-        await supabaseAdmin.storage.createBucket('avatars', {
-          public: true,
-          allowedMimeTypes: ['image/png', 'image/jpeg', 'image/svg+xml'],
-        });
-        const retry = await supabaseAdmin.storage
-          .from('avatars')
-          .upload(fileName, logoFile, { upsert: true });
-        error = retry.error;
-      }
 
       if (error) throw error;
 
@@ -108,6 +86,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (apiKey.trim()) {
       await updateSettings({ apiKey: apiKey.trim() });
       setApiKey('');
+      alert('API key saved');
     }
   };
 
@@ -208,7 +187,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             <div className="flex gap-3">
               <input
                 type="password"
-                placeholder="Paste your xAI key here..."
+                placeholder="sk-ant-..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleApiKeySave()}
