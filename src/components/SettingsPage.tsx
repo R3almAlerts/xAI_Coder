@@ -1,8 +1,7 @@
 // src/components/SettingsPage.tsx
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
-import { Upload, Copy, Check, Key, Palette, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface SettingsPageProps {
@@ -90,7 +89,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       // Update settings
       await updateSettings({ logoUrl: publicUrl });
-      setCurrentLogoUrl(publicUrl);
+
       setUploadSuccess(true);
       alert('Logo uploaded successfully!');
     } catch (error: any) {
@@ -128,7 +127,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       <div className="max-w-4xl mx-auto p-6 lg:p-8 flex-1 overflow-y-auto">
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <Globe size={32} />
             Settings
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
@@ -140,7 +138,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           {/* Branding */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <Globe size={20} className="text-indigo-600" />
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Branding</h2>
             </div>
 
@@ -198,7 +195,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           {/* API Key */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <Key size={20} className="text-green-600" />
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">xAI API Key</h2>
             </div>
 
@@ -259,7 +255,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           {/* Appearance */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <Palette size={20} className="text-purple-600" />
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Appearance</h2>
             </div>
             <p className="text-gray-500 dark:text-gray-400">
