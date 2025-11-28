@@ -55,7 +55,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // ADMIN CLIENT → bypasses RLS + auth completely
       const { error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
@@ -63,7 +62,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           contentType: logoFile.type,
         });
 
-      // Auto-create bucket if it doesn't exist
       if (error?.message?.includes('Bucket not found')) {
         await supabaseAdmin.storage.createBucket('avatars', { public: true });
         await supabaseAdmin.storage
@@ -125,7 +123,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
         <div className="space-y-8">
           {/* Branding */}
-          <div className="bg-white dark:bg-gray-800  rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Branding</h2>
 
             <div className="flex items-start gap-8">
@@ -191,7 +189,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
               </div>
             ) : (
               <p className="text-gray-500 dark:text-gray-400 italic mb-4">No API key configured</p>
-            )
+            )}
 
             <div className="flex gap-3 mt-6">
               <input
@@ -219,6 +217,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             </p>
           </div>
 
+          {/* Appearance */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
             <p className="text-gray-500 dark:text-gray-400">Dark mode follows system preference</p>
