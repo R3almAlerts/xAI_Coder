@@ -2,15 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
+import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 
-// Public client (auth + DB)
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
-// Admin client — ONLY for storage (bypasses RLS 100%)
+// Admin client — ONLY for global logo upload (service_role key)
 const supabaseAdmin = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
@@ -66,25 +61,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // SERVICE_ROLE KEY → BYPASSES ALL RLS & BUCKET CHECKS
-      const { data, error } = await supabaseAdmin.storage
+      // ADMIN CLIENT → bypasses RLS + no user needed
+      let { error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
           contentType: logoFile.type,
-          cacheControl: '3600',
         });
 
-      if (error && error.message.includes('Bucket not found')) {
-        // Auto-create bucket if missing
+      // Auto-create bucket if missing
+      if (error?.message.includes('Bucket not found')) {
         await supabaseAdmin.storage.createBucket('avatars', { public: true });
-        // Retry upload
-        await supabaseAdmin.storage.from('avatars').upload(fileName, logoFile, { upsert: true });
-      } else if (error) {
-        throw error;
+        await supabaseAdmin.storage
+          .from('avatars')
+          .upload(fileName, logoFile, { upsert: true });
       }
 
-      // Get public URL via public client
+      if (error) throw error;
+
+      // Get public URL (safe to use public client)
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
@@ -96,7 +91,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       alert('Logo uploaded successfully!');
 
     } catch (error: any) {
-      console.error('Upload failed:', error);
+      console.error('Logo upload failed:', error);
       alert(`Upload failed: ${error.message}`);
     } finally {
       setIsUploading(false);
@@ -143,7 +138,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
             <div className="flex items-start gap-8">
               <img
                 src={logoPreview || '/vite.svg'}
-                alt="Logo"
+                alt="Organization logo"
                 className="w-32 h-32 rounded-xl object-contain bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 p-2"
               />
 
@@ -155,7 +150,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
                 />
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Max 5MB • PNG, JPG, SVG
+                  Max 5MB • PNG, JPG, SVG recommended
                 </p>
 
                 {logoFile && (
@@ -163,7 +158,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                     <button
                       onClick={uploadLogo}
                       disabled={isUploading}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium transition"
                     >
                       {isUploading ? (
                         <>
@@ -177,6 +172,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                         </>
                       )}
                     </button>
+
                     {uploadSuccess && (
                       <span className="text-green-600 flex items-center gap-2 font-medium">
                         <Check className="w-5 h-5" />
@@ -190,7 +186,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           </div>
 
           {/* API Key */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">xAI API Key</h2>
 
             {settings?.apiKey ? (
@@ -216,7 +212,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
               <button
                 onClick={handleApiKeySave}
                 disabled={!apiKey.trim()}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition"
               >
                 Save Key
               </button>
