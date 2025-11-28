@@ -1,53 +1,47 @@
-// src/components/Settings.tsx
-import React, { useState, useEffect } from 'react';
-import { useSupabase } from '../integrations/supabase/supabase';
-import { useUser, useAuth } from '@clerk/clerk-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Upload, X, CheckCircle } from 'lucide-react';
-import { toast } from 'sonner';
+// src/components/SettingsPage.tsx
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+import { useSettings } from '../hooks/useSettings';
+import { Upload, Copy, Check, Key, Palette, Globe } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
-interface SettingsProps {
+interface SettingsPageProps {
   onClose: () => void;
 }
 
-export default function Settings({ onClose }: SettingsProps) {
-  const supabase = useSupabase();
-  const { user, isLoaded } = useUser();
-  const { signOut } = useAuth();
+export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
+  const { settings, isLoading, updateSettings } = useSettings();
 
-  const [displayName, setDisplayName] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>('');
-  const [currentLogoUrl, setCurrentLogoUrl] = useState<string>('');
+  const [apiKey, setApiKey] = useState('');
+  const [copied, setCopied] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  useEffect(() => {
-    if (isLoaded && user) {
-      setDisplayName(user.fullName || user.primaryEmailAddress?.emailAddress.split('@')[0] || '');
-      setCurrentLogoUrl(user.imageUrl || '');
-      setLogoPreview(user.imageUrl || '');
-    }
-  }, [user, isLoaded]);
+  const currentApiKey = settings?.apiKey || '';
+  const currentLogoUrl = settings?.logoUrl || '';
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Load preview on mount
+  useEffect(() => {
+    if (currentLogoUrl) {
+      setLogoPreview(currentLogoUrl);
+    }
+  }, [currentLogoUrl]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      toast.error('Please select a valid image file');
+      alert('Please select a valid image file');
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image must be under 5MB');
+      alert('Image must be under 5MB');
       return;
     }
 
@@ -66,232 +60,216 @@ export default function Settings({ onClose }: SettingsProps) {
     setLogoFile(null);
     setLogoPreview(currentLogoUrl);
     setUploadSuccess(false);
-    if (inputRef.current) inputRef.current.value = '';
   };
 
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  const uploadLogo = async (): Promise<string | null> => {
-    if (!logoFile || !user) return null;
+  const uploadLogo = async () => {
+    if (!logoFile) return;
 
     setIsUploading(true);
 
     try {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase();
-      const fileName = `${user.id}.${fileExt || 'png'}`;
-      const filePath = `avatars/${fileName}`;
+      const fileName = `${crypto.randomUUID()}.${fileExt || 'png'}`;
+      const filePath = `logos/${fileName}`;
 
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
-        .from('user-assets')
+        .from('chat-attachments')
         .upload(filePath, logoFile, {
           upsert: true,
           contentType: logoFile.type,
+          cacheControl: '3600',
         });
 
-      if (error && error.message !== 'The resource already exists') {
-        throw error;
-      }
+      if (error) throw error;
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('user-assets')
+        .from('chat-attachments')
         .getPublicUrl(filePath);
 
-      // Update Clerk user metadata
-      await user.update({
-        imageUrl: publicUrl,
-        unsafeMetadata: {
-          ...user.unsafeMetadata,
-          custom_avatar: publicUrl,
-        },
-      });
-
+      // Update settings
+      await updateSettings({ logoUrl: publicUrl });
       setCurrentLogoUrl(publicUrl);
       setUploadSuccess(true);
-      toast.success('Logo uploaded successfully!');
-      return publicUrl;
+      alert('Logo uploaded successfully!');
     } catch (error: any) {
       console.error('Upload error:', error);
-      toast.error(error.message || 'Failed to upload logo');
-      return null;
+      alert(error.message || 'Failed to upload logo');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const saveProfile = async () => {
-    if (!user) return;
-
-    setIsSavingProfile(true);
-
-    try {
-      let finalLogoUrl = currentLogoUrl;
-
-      if (logoFile) {
-        const uploadedUrl = await uploadLogo();
-        if (uploadedUrl) {
-          finalLogoUrl = uploadedUrl;
-        }
-      }
-
-      // Update display name if changed
-      if (displayName !== (user.fullName || '')) {
-        await user.update({
-          firstName: displayName.split(' ')[0],
-          lastName: displayName.split(' ').slice(1).join(' ') || '',
-        });
-      }
-
-      toast.success('Profile updated successfully!');
-    } catch (error: any) {
-      toast.error('Failed to save profile');
-    } finally {
-      setIsSavingProfile(false);
+  const handleApiKeySave = async () => {
+    if (apiKey.trim()) {
+      await updateSettings({ apiKey: apiKey.trim() });
+      setApiKey('');
     }
   };
 
-  if (!isLoaded || !user) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const copyApiKey = () => {
+    navigator.clipboard.writeText(currentApiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-5 h-5" />
-          </Button>
-          <h1 className="text-2xl font-semibold">Settings</h1>
+    <div className="relative h-full flex flex-col">
+      {/* Close Button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        aria-label="Close settings"
+      >
+        <X size={24} />
+      </button>
+
+      <div className="max-w-4xl mx-auto p-6 lg:p-8 flex-1 overflow-y-auto">
+        <div className="mb-10">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <Globe size={32} />
+            Settings
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2">
+            Manage your xAI Coder preferences and API keys
+          </p>
         </div>
-        <Button 
-          onClick={saveProfile} 
-          disabled={isSavingProfile || (isUploading && !!logoFile)}
-        >
-          {(isSavingProfile || (isUploading && !!logoFile)) ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Save Changes'
-          )}
-        </Button>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-2xl mx-auto space-y-8">
-          {/* Profile Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile</CardTitle>
-              <CardDescription>Update your display name and logo</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Logo Upload */}
-              <div className="space-y-4">
-                <Label>Logo</Label>
-                <div className="flex items-center gap-6">
-                  <Avatar className="w-24 h-24">
-                    <AvatarImage src={logoPreview || currentLogoUrl} />
-                    <AvatarFallback className="text-2xl">
-                      {displayName.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+        <div className="space-y-8">
+          {/* Branding */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Globe size={20} className="text-indigo-600" />
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Branding</h2>
+            </div>
 
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Input
-                        ref={inputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        id="logo-upload"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => inputRef.current?.click()}
-                        disabled={isUploading}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        Choose Image
-                      </Button>
-
-                      {logoFile && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={removeLogo}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                          {uploadSuccess && (
-                            <div className="flex items-center text-green-600">
-                              <CheckCircle className="w-5 h-5" />
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-
-                    {logoFile && (
-                      <p className="text-sm text-muted-foreground">
-                        {logoFile.name} ({(logoFile.size / 1024 / 1024).toFixed(2)} MB)
-                      </p>
-                    )}
-
-                    <p className="text-xs text-muted-foreground">
-                      Recommended: Square image, max 5MB
-                    </p>
-
-                    {isUploading && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Uploading logo...</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Display Name */}
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your name"
+            <div className="flex items-center gap-6">
+              <div className="flex-shrink-0">
+                <img
+                  src={logoPreview || currentLogoUrl || '/vite.svg'}
+                  alt="Current logo"
+                  className="w-24 h-24 rounded-xl object-contain bg-gray-100 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600"
                 />
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Account Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Account</CardTitle>
-              <CardDescription>Manage your account settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                Email: {user.primaryEmailAddress?.emailAddress}
+              <div className="flex-1">
+                <label className="block">
+                  <span className="sr-only">Upload new logo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                  />
+                </label>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  Recommended: 512×512 PNG or SVG
+                </p>
+                {logoFile && (
+                  <button
+                    onClick={uploadLogo}
+                    disabled={isUploading}
+                    className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2 text-sm font-medium"
+                  >
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Upload Logo
+                      </>
+                    )}
+                  </button>
+                )}
+                {uploadSuccess && (
+                  <p className="mt-2 text-sm text-green-600 flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    Logo uploaded successfully!
+                  </p>
+                )}
               </div>
-              <Button variant="destructive" onClick={() => signOut()}>
-                Sign Out
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+
+          {/* API Key */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Key size={20} className="text-green-600" />
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">xAI API Key</h2>
+            </div>
+
+            {currentApiKey ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <code className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                    {currentApiKey.slice(0, 12)}••••••••{currentApiKey.slice(-8)}
+                  </code>
+                  <button
+                    onClick={copyApiKey}
+                    className="ml-4 p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                  >
+                    {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
+                  </button>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Your API key is stored securely and only used to communicate with Grok.
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400 italic">
+                No API key configured yet
+              </p>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <input
+                type="password"
+                placeholder="Enter your xAI API key"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleApiKeySave()}
+                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleApiKeySave}
+                disabled={!apiKey.trim()}
+                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Save Key
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+              Get your API key from{' '}
+              <a
+                href="https://x.ai/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                x.ai/api
+              </a>
+            </p>
+          </div>
+
+          {/* Appearance */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Palette size={20} className="text-purple-600" />
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Appearance</h2>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400">
+              Dark mode follows your system preference
+            </p>
+          </div>
         </div>
       </div>
     </div>
   );
-}
+};
+
+SettingsPage.displayName = 'SettingsPage';
