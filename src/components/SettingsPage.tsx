@@ -3,13 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-
-// Admin client — ONLY for global logo upload (service_role key)
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
-);
+import { supabaseAdmin } from '../lib/supabaseAdmin';
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -61,25 +55,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // ADMIN CLIENT → bypasses RLS + no user needed
-      let { error } = await supabaseAdmin.storage
+      // ADMIN CLIENT → bypasses RLS + auth completely
+      const { error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
           contentType: logoFile.type,
         });
 
-      // Auto-create bucket if missing
-      if (error?.message.includes('Bucket not found')) {
+      // Auto-create bucket if it doesn't exist
+      if (error?.message?.includes('Bucket not found')) {
         await supabaseAdmin.storage.createBucket('avatars', { public: true });
         await supabaseAdmin.storage
           .from('avatars')
           .upload(fileName, logoFile, { upsert: true });
+      } else if (error) {
+        throw error;
       }
 
-      if (error) throw error;
-
-      // Get public URL (safe to use public client)
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
@@ -132,7 +125,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
         <div className="space-y-8">
           {/* Branding */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-gray-800  rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Branding</h2>
 
             <div className="flex items-start gap-8">
@@ -198,7 +191,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
               </div>
             ) : (
               <p className="text-gray-500 dark:text-gray-400 italic mb-4">No API key configured</p>
-            )}
+            )
 
             <div className="flex gap-3 mt-6">
               <input
