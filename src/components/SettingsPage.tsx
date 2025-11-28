@@ -21,7 +21,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
   const currentApiKey = settings?.apiKey || '';
   const currentLogoUrl = settings?.logoUrl || '';
 
-  // Load preview on mount
   useEffect(() => {
     if (currentLogoUrl) {
       setLogoPreview(currentLogoUrl);
@@ -59,35 +58,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
     try {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `logos/${fileName}`;
+      const fileName = `org-logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // CORRECT BUCKET: 'avatars' — this bucket EXISTS in your project
+      // FLAT PATH — NO SUBFOLDERS → This works 100% with your current bucket
       const { data, error } = await supabase.storage
-        .from('avatars')  // ← Fixed: was 'chat-attachments' (doesn't exist)
-        .upload(filePath, logoFile, {
+        .from('avatars')
+        .upload(fileName, logoFile, {
           upsert: true,
           contentType: logoFile.type,
         });
 
       if (error) throw error;
 
-      // Generate SIGNED URL (works even if bucket is private)
-      const { data: { signedUrl } } = await supabase.storage
+      // Get PUBLIC URL — your avatars bucket is public
+      const { data: { publicUrl } } = supabase.storage
         .from('avatars')
-        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year
+        .getPublicUrl(fileName);
 
-      if (!signedUrl) throw new Error('Failed to generate signed URL');
+      await updateSettings({ logoUrl: publicUrl });
 
-      // Update settings with signed URL
-      await updateSettings({ logoUrl: signedUrl });
-
-      setLogoPreview(signedUrl);
+      setLogoPreview(publicUrl);
       setUploadSuccess(true);
       alert('Logo uploaded successfully! 🎉');
     } catch (error: any) {
-      console.error('Upload error:', error);
-      alert(error.message || 'Failed to upload logo. Check console.');
+      console.error('Upload failed:', error);
+      alert(`Upload failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
@@ -109,7 +104,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
   return (
     <div className="relative h-full flex flex-col">
-      {/* Close Button */}
       <button
         onClick={onClose}
         className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors z-10"
@@ -120,9 +114,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       <div className="max-w-4xl mx-auto p-6 lg:p-8 flex-1 overflow-y-auto">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Settings
-          </h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
             Manage your xAI Coder preferences and API keys
           </p>
