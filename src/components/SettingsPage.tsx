@@ -4,15 +4,16 @@ import { X, Upload, Copy, Check, Loader2 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
 import { createClient } from '@supabase/supabase-js';
 
-// Use SERVICE_ROLE key for storage (bypasses RLS) — safe in client if .env is protected
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY // ← This bypasses RLS
-);
-
+// Public client (for auth, DB)
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+// Admin client (for storage uploads — bypasses RLS)
+const supabaseAdmin = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY // This is your working key
 );
 
 interface SettingsPageProps {
@@ -40,11 +41,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image');
+      alert('Please select an image file');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('Max 5MB');
+      alert('Image must be under 5MB');
       return;
     }
 
@@ -65,21 +66,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `org-logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // ADMIN CLIENT — BYPASSES RLS ENTIRELY
-      let { data, error } = await supabaseAdmin.storage
+      // Auto-create bucket + upload (service_role bypasses RLS)
+      let { error } = await supabaseAdmin.storage
         .from('avatars')
         .upload(fileName, logoFile, {
           upsert: true,
           contentType: logoFile.type,
         });
 
-      // Auto-create bucket if missing
       if (error && error.message.includes('Bucket not found')) {
-        await supabaseAdmin.storage.createBucket('avatars', { public: true });
+        await supabaseAdmin.storage.createBucket('avatars', {
+          public: true,
+          allowedMimeTypes: ['image/png', 'image/jpeg', 'image/svg+xml'],
+        });
         const retry = await supabaseAdmin.storage
           .from('avatars')
           .upload(fileName, logoFile, { upsert: true });
-        data = retry.data;
         error = retry.error;
       }
 
@@ -93,7 +95,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       setLogoPreview(publicUrl);
       setUploadSuccess(true);
-      alert('Logo uploaded successfully! 🚀');
+      alert('Logo uploaded successfully!');
     } catch (error: any) {
       console.error('Upload failed:', error);
       alert(`Upload failed: ${error.message}`);
@@ -119,7 +121,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     <div className="relative h-full flex flex-col">
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg z-10"
+        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg z-10 transition-colors"
         aria-label="Close"
       >
         <X size={24} />
@@ -127,7 +129,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       <div className="max-w-4xl mx-auto p-6 lg:p-8 flex-1 overflow-y-auto">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold">Settings</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
             Manage your xAI Coder workspace
           </p>
@@ -135,13 +137,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
         <div className="space-y-8">
           {/* Branding */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
-            <h2 className="text-xl font-semibold mb-6">Branding</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Branding</h2>
 
             <div className="flex items-start gap-8">
               <img
                 src={logoPreview || '/vite.svg'}
-                alt="Logo"
+                alt="Organization logo"
                 className="w-32 h-32 rounded-xl object-contain bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 p-2"
               />
 
@@ -152,14 +154,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                   onChange={handleLogoUpload}
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
                 />
-                <p className="text-sm text-gray-500">Max 5MB • PNG, JPG, SVG</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Max 5MB • PNG, JPG, SVG recommended
+                </p>
 
                 {logoFile && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={uploadLogo}
                       disabled={isUploading}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium transition"
                     >
                       {isUploading ? (
                         <>
@@ -173,10 +177,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                         </>
                       )}
                     </button>
+
                     {uploadSuccess && (
                       <span className="text-green-600 flex items-center gap-2 font-medium">
                         <Check className="w-5 h-5" />
-                        Success!
+                        Uploaded!
                       </span>
                     )}
                   </div>
@@ -186,49 +191,50 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           </div>
 
           {/* API Key */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
-            <h2 className="text-xl font-semibold mb-6">xAI API Key</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">xAI API Key</h2>
 
             {settings?.apiKey ? (
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg font-mono text-sm">
                 <code>{settings.apiKey.slice(0, 12)}••••••••{settings.apiKey.slice(-8)}</code>
-                <button onClick={copyApiKey} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
-                  {copied ? <Check className="text-green-600" /> : <Copy />}
+                <button onClick={copyApiKey} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition">
+                  {copied ? <Check className="text-green-600" size={18} /> : <Copy size={18} />}
                 </button>
               </div>
             ) : (
-              <p className="text-gray-500 italic">No API key set</p>
+              <p className="text-gray-500 dark:text-gray-400 italic mb-4">No API key configured</p>
             )}
 
-            <div className="mt-6 flex gap-3">
+            <div className="flex gap-3">
               <input
                 type="password"
-                placeholder="sk-ant-..."
+                placeholder="Paste your xAI key here..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleApiKeySave()}
-                className="flex-1 px-4 py-3 rounded-lg border bg-white dark:bg-gray-700"
+                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 onClick={handleApiKeySave}
                 disabled={!apiKey.trim()}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
               >
                 Save Key
               </button>
             </div>
 
-            <p className="mt-4 text-sm text-gray-500">
-              Get your key →{' '}
-              <a href="https://x.ai/api" target="_blank" className="text-blue-600 hover:underline">
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+              Get your key from{' '}
+              <a href="https://x.ai/api" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                 x.ai/api
               </a>
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
-            <h2 className="text-xl font-semibold mb-4">Appearance</h2>
-            <p className="text-gray-500">Dark mode follows system preference</p>
+          {/* Appearance */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
+            <p className="text-gray-500 dark:text-gray-400">Dark mode follows system preference</p>
           </div>
         </div>
       </div>
