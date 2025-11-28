@@ -9,7 +9,7 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
-  const { settings, isLoading, updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettings();
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>('');
@@ -18,13 +18,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const currentApiKey = settings?.apiKey || '';
   const currentLogoUrl = settings?.logoUrl || '';
 
   useEffect(() => {
-    if (currentLogoUrl) {
-      setLogoPreview(currentLogoUrl);
-    }
+    if (currentLogoUrl) setLogoPreview(currentLogoUrl);
   }, [currentLogoUrl]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,10 +29,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file');
+      alert('Please select an image file');
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
       alert('Image must be under 5MB');
       return;
@@ -45,9 +41,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     setUploadSuccess(false);
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setLogoPreview(reader.result as string);
-    };
+    reader.onloadend = () => setLogoPreview(reader.result as string);
     reader.readAsDataURL(file);
   };
 
@@ -60,17 +54,41 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
       const fileExt = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const fileName = `org-logo-${crypto.randomUUID()}.${fileExt}`;
 
-      // FLAT PATH — NO SUBFOLDERS → This works 100% with your current bucket
-      const { data, error } = await supabase.storage
+      // This will auto-create the bucket + make it public if it doesn't exist
+      const { data, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, logoFile, {
+          cacheControl: '3600',
           upsert: true,
           contentType: logoFile.type,
         });
 
-      if (error) throw error;
+      // If bucket doesn't exist, Supabase returns a specific error — we create it
+      if (uploadError && uploadError.message.includes('Bucket not found')) {
+        // Create bucket programmatically (requires service_role key — you have it in .env)
+        const { error: createError } = await supabase.storage.createBucket('avatars', {
+          public: true,
+          allowedMimeTypes: ['image/*'],
+        });
 
-      // Get PUBLIC URL — your avatars bucket is public
+        if (createError && !createError.message.includes('already exists')) {
+          throw createError;
+        }
+
+        // Retry upload after bucket creation
+        const { data: retryData, error: retryError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, logoFile, {
+            upsert: true,
+            contentType: logoFile.type,
+          });
+
+        if (retryError) throw retryError;
+      } else if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
@@ -79,7 +97,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
 
       setLogoPreview(publicUrl);
       setUploadSuccess(true);
-      alert('Logo uploaded successfully! 🎉');
+      alert('Logo uploaded successfully!');
     } catch (error: any) {
       console.error('Upload failed:', error);
       alert(`Upload failed: ${error.message || 'Unknown error'}`);
@@ -92,12 +110,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     if (apiKey.trim()) {
       await updateSettings({ apiKey: apiKey.trim() });
       setApiKey('');
-      alert('API key saved securely');
+      alert('API key saved');
     }
   };
 
   const copyApiKey = () => {
-    navigator.clipboard.writeText(currentApiKey);
+    navigator.clipboard.writeText(settings?.apiKey || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -106,56 +124,47 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     <div className="relative h-full flex flex-col">
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors z-10"
-        aria-label="Close settings"
+        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg z-10"
+        aria-label="Close"
       >
         <X size={24} />
       </button>
 
       <div className="max-w-4xl mx-auto p-6 lg:p-8 flex-1 overflow-y-auto">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Manage your xAI Coder preferences and API keys
+            Manage your xAI Coder workspace
           </p>
         </div>
 
         <div className="space-y-8">
           {/* Branding */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Branding</h2>
+            <h2 className="text-xl font-semibold mb-6">Branding</h2>
 
             <div className="flex items-start gap-8">
-              <div className="flex-shrink-0">
-                <img
-                  src={logoPreview || '/vite.svg'}
-                  alt="Organization logo"
-                  className="w-32 h-32 rounded-xl object-contain bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 p-2"
-                />
-              </div>
+              <img
+                src={logoPreview || '/vite.svg'}
+                alt="Logo"
+                className="w-32 h-32 rounded-xl object-contain bg-gray-50 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 p-2"
+              />
 
               <div className="flex-1 space-y-4">
-                <div>
-                  <label className="block">
-                    <span className="sr-only">Upload new logo</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
-                    />
-                  </label>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    Recommended: 512×512 PNG, JPG or SVG • Max 5MB
-                  </p>
-                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
+                />
+                <p className="text-sm text-gray-500">Max 5MB • PNG, JPG, SVG</p>
 
                 {logoFile && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={uploadLogo}
                       disabled={isUploading}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2 font-medium"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium"
                     >
                       {isUploading ? (
                         <>
@@ -169,11 +178,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                         </>
                       )}
                     </button>
-
                     {uploadSuccess && (
-                      <span className="text-green-600 flex items-center gap-2 font-medium">
+                      <span className="text-green-600 flex items-center gap-2">
                         <Check className="w-5 h-5" />
-                        Uploaded!
+                        Done!
                       </span>
                     )}
                   </div>
@@ -183,64 +191,50 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
           </div>
 
           {/* API Key */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">xAI API Key</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
+            <h2 className="text-xl font-semibold mb-6">xAI API Key</h2>
 
-            {currentApiKey ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg font-mono text-sm">
-                  <code className="text-gray-700 dark:text-gray-300">
-                    {currentApiKey.slice(0, 12)}••••••••{currentApiKey.slice(-8)}
-                  </code>
-                  <button
-                    onClick={copyApiKey}
-                    className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                  >
-                    {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
-                  </button>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Your API key is encrypted and only used to talk to Grok.
-                </p>
+            {settings?.apiKey ? (
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg font-mono text-sm">
+                <code>{settings.apiKey.slice(0, 12)}••••••••{settings.apiKey.slice(-8)}</code>
+                <button onClick={copyApiKey} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                  {copied ? <Check className="text-green-600" /> : <Copy />}
+                </button>
               </div>
             ) : (
-              <p className="text-gray-500 dark:text-gray-400 italic mb-4">
-                No API key configured yet
-              </p>
+              <p className="text-gray-500 italic">No API key set</p>
             )}
 
-            <div className="flex gap-3">
+            <div className="mt-6 flex gap-3">
               <input
                 type="password"
                 placeholder="sk-ant-..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleApiKeySave()}
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="flex-1 px-4 py-3 rounded-lg border bg-white dark:bg-gray-700"
               />
               <button
                 onClick={handleApiKeySave}
                 disabled={!apiKey.trim()}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 Save Key
               </button>
             </div>
 
-            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-              Get your key from{' '}
-              <a href="https://x.ai/api" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <p className="mt-4 text-sm text-gray-500">
+              Get your key →{' '}
+              <a href="https://x.ai/api" target="_blank" className="text-blue-600 hover:underline">
                 x.ai/api
               </a>
             </p>
           </div>
 
           {/* Appearance */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
-            <p className="text-gray-500 dark:text-gray-400">
-              Dark mode follows your system preference
-            </p>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border p-6">
+            <h2 className="text-xl font-semibold mb-4">Appearance</h2>
+            <p className="text-gray-500">Dark mode follows system preference</p>
           </div>
         </div>
       </div>
